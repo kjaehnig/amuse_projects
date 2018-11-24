@@ -202,8 +202,8 @@ def simple_2d_movie_maker(filename, img_dir, output_dir=None):
     """
     print "making evolution movie"
     previous_movie_check = os.path.isfile(sim_dir+movie_filename)
-    if previous_movie_check==True:
-        os.remove(sim_dir+movie_filename)
-        print "Removed Previous Simulation Movie" 
+    # if previous_movie_check==True:
+        # os.remove(sim_dir+movie_filename)
+        # print "Removed Previous Simulation Movie" 
     os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+image_dir+"*.png' "+sim_dir+movie_filename)
     print "finished evolution movie"
