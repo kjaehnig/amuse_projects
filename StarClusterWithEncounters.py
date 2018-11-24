@@ -902,19 +902,19 @@ def new_option_parser():
     result.add_option("--Sdist", dest="Sdist", default="P")
     result.add_option("--Mmin", dest="Mmin", type="float", default=0.5)
     result.add_option("--Mmax", dest="Mmax", type="float", default=100.)
-    result.add_option("--filename", dest="filename", default="cluster1")
-    result.add_option("--seed", dest="seed",type="int", default=2501)
-    result.add_option("--nproc", dest="nproc",type="int", default=1)
-    result.add_option("--smalln_proc",dest="smalln_pro",type="int",default=1)
-    result.add_option("--nf", dest="NF", type="float", default=1.0)
-    result.add_option("--hbf", dest="HBF", type="float", default=3.0)
-    result.add_option("--sf", dest="SF",type="float", default=10.0)
+    result.add_option("--Filename", dest="filename", default="cluster1")
+    result.add_option("--Seed", dest="seed",type="int", default=2501)
+    result.add_option("--Npro", dest="nproc",type="int", default=1)
+    result.add_option("--Smalln_pro",dest="smalln_pro",type="int",default=1)
+    result.add_option("--NF", dest="NF", type="float", default=1.0)
+    result.add_option("--HBF", dest="HBF", type="float", default=3.0)
+    result.add_option("--SF", dest="SF",type="float", default=10.0)
     return result
 
 
 
 if __name__ == "__main__":
-    o, arguments  = new_option_parser().parse_args()
+    opt, arguments  = new_option_parser().parse_args()
     main(**o.__dict__)
     set_printing_strategy("custom", 
                       preferred_units = [units.MSun, units.parsec, units.Myr], 
@@ -927,9 +927,25 @@ if __name__ == "__main__":
     #     # This is only for random.sample, which apparently does not use numpy
     #     import random
     #     random.seed(options.seed)
-    # ScDynSeBin_V1(options.N, options.Binfrac, options.HMR, options.Tend, 
-    #             options.Numsteps, options.Mdist, options.Sdist, options.Mmin,
-    #             options.Mmax, options.filename, options.seed)
+    main(opt.N, 
+        opt.Binfrac, 
+        opt.HMR, 
+        opt.Virialratio,
+        opt.Tend,
+        opt.Numsteps,
+        opt.Mdist,
+        opt.Sdist,
+        opt.Mmin,
+        opt.Mmax,
+        opt.Filename,
+        opt.Seed,
+        opt.Npro,
+        opt.Smalln_pro,
+        opt.NF,
+        opt.HBF,
+        opt.SF)
+
+
 
 
 
