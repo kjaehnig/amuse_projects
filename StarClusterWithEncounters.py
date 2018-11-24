@@ -512,30 +512,25 @@ def main(
 
     sim_dir = data_dir+str(filename)+"/"
     image_dir_check = os.path.isdir(sim_dir+'images')
+    print "Made image directory"
 
-
-    if image_dir_check == False:
-        os.makedirs(sim_dir+'images')
-        print "Made image directory"
-
-    movie_filename = "bs_clust_evol_in_sim.mp4"
     image_dir = sim_dir+"images/"
 
-    ssf_dir = data_dir+str(filename)+"/"
-    bsf_dir = data_dir+str(filename)+"/"
-
     logging.basicConfig(level=logging.ERROR)
-
 
     print N, Mmin, Mmax,HMR
     stars, converter = MakeMeANewCluster(N=sim_num, HalfMassRadius=HMR, mdist=Mdist,
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
 
-    code = Hermite(converter, number_of_workers=nproc)
-    #code.parameters.timestep_parameter = 0.001
+    code = ph4(converter, number_of_workers=nproc)
     code.initialize_code()
-    code.parameters.dt_param = 0.0001
+    code.set_defaults()
+    code.parameters.epsilon_squared = 0.0|units.AU**2.
+    # code.parameters.dt_param = 0.0001
+    code.parameters.timestep_parameter = 0.0001
+    stop_cond = grav.stopping_conditions.collision_detection
+    stop_cond.enable()
 
     code1 = datetime.datetime.now()
     code1_delta = (code1-start_time).total_seconds()
@@ -573,7 +568,6 @@ def main(
     )
 
 
-
     multiples_code.particles.add_particles((stars-binary_stars).copy())
     multiples_code.singles_in_binaries.add_particles(singles_in_binaries)
     multiples_code.binaries.add_particles(binary_stars)
@@ -587,7 +581,6 @@ def main(
     #OmegaVector = [0., 0., 1e-15]|units.s**-1
     #add_spin(multiples_code.particles, OmegaVector)
 
-    # individual_stars = (stars-binary_stars).copy()
 
     multiples_code.evolve_model(0.0|units.Myr)
 
@@ -726,9 +719,9 @@ def main(
         if epsilon_check:
            print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
            spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 3,time, x, image_dir)
-           write_set_to_file(individual_stars.savepoint(time),ssf_dir+"single_stars.hdf5","hdf5")
-           write_set_to_file(singles_in_binaries.savepoint(time), bsf_dir+"binary_singles.hdf5","hdf5")
-           write_set_to_file(binary_stars.savepoint(time),bsf_dir+"binary_stars.hdf5","hdf5")
+           write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
+           write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
+           write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
            snapshot_timesteps = np.delete(snapshot_timesteps, 0)
            print snapshot_timesteps
 
@@ -736,7 +729,7 @@ def main(
 
         print "t, Energy=", time, multiples_code.get_total_energy()
 
-    simple_2d_movie_maker("output_movie_evolution", img_dir=data_dir)
+    simple_2d_movie_maker("output_movie_evolution", img_dir=sim_dir)
 
 
 def new_option_parser():

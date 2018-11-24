@@ -227,10 +227,10 @@ def simple_2d_movie_maker(filename, img_dir, output_dir=None):
         MOVIE. SET TO NONE, IN WHICH CASE THE MOVIE IS 
         OUTPUTTED IN THE SAME DIRECTORY AS THE STORED IMAGES 
     """
+    if not filename[-4:]=='.mp4': filename = filename+".mp4"
+    if not output_dir==None: movie_dir = output_dir
+    if output_dir==None: movie_dir = img_dir
+    
     print "making evolution movie"
-    # previous_movie_check = os.path.isfile(sim_dir+movie_filename)
-    # if previous_movie_check==True:
-        # os.remove(sim_dir+movie_filename)
-        # print "Removed Previous Simulation Movie" 
-    os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+img_dir+"*.png' "+img_dir+filename)
+    os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+img_dir+"*.png' "+movie_dir+filename)
     print "finished evolution movie"
