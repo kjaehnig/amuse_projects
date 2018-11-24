@@ -34,8 +34,8 @@ from support_functions import MakeMeANewCluster
 from support_functions import spatial_plot_module
 from support_functions import simple_2d_movie_maker
 
-
-data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
+data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
+# data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
 #data_dir = "/home/jaehniko/data_files"
 
 def write_csv(data, filename):
@@ -389,31 +389,7 @@ def resolve_binary_merger(stellar, multiples_code):
         print "New single star added ", new_particle.key,"\n"
         print "Sanity Check: ",len(multiples_code.singles_in_binaries), len(multiples_code.singles), len(stellar.particles)
 
-def binary_reference_frame(binary_systems, bsingles):
-    contact_status = []
-    for bi in binary_systems:
-        child_1 = bi.child1
-        child_2 = bi.child2
 
-        child1 = child_1.as_particle_in_set(bsingles)
-        child2 = child_2.as_particle_in_set(bsingles)
-        sep = (child1.position - child2.position).length()
-        rtot = (child1.radius+child2.radius)
-
-        if rtot > sep and sep != 0.0|units.m:
-            contact_status.append(["RLOF","RLOF"])
-        if sep==0.0|units.m:
-            contact_status.append(["MERGED","MERGED"])
-        if rtot < sep:
-            contact_status.append(["DETACHED","DETACHED"])
-
-        child_1.as_particle_in_set(bsingles).position += bi.position
-        child_2.as_particle_in_set(bsingles).position += bi.position
-
-        child_1.as_particle_in_set(bsingles).velocity += bi.velocity
-        child_2.as_particle_in_set(bsingles).velocity += bi.velocity
-
-    return bsingles, np.ravel(contact_status)
 
 def check_for_merger(stellar, multiples_code):
     condition_value = False
@@ -558,6 +534,7 @@ def main(
 
     code = Hermite(converter, number_of_workers=nproc)
     #code.parameters.timestep_parameter = 0.001
+    code.initialize_code()
     code.parameters.dt_param = 0.0001
 
     code1 = datetime.datetime.now()
@@ -665,9 +642,9 @@ def main(
     x=0
 
     # spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, time, x, image_dir)
-    write_set_to_file(individual_stars.savepoint(time),ssf_dir+"single_stars.hdf5","hdf5")
-    write_set_to_file(singles_in_binaries.savepoint(time), bsf_dir+"binary_singles.hdf5","hdf5")
-    write_set_to_file(binary_stars.savepoint(time),bsf_dir+"binary_stars.hdf5","hdf5")
+    # write_set_to_file(individual_stars.savepoint(time),ssf_dir+"single_stars.hdf5","hdf5")
+    # write_set_to_file(singles_in_binaries.savepoint(time), bsf_dir+"binary_singles.hdf5","hdf5")
+    # write_set_to_file(binary_stars.savepoint(time),bsf_dir+"binary_stars.hdf5","hdf5")
 
     print tend, Numsteps
     sim_dt = tend.value_in(units.Myr) / np.float(nsteps)
@@ -748,7 +725,7 @@ def main(
 
         if epsilon_check:
            print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
-           # spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, time, x, image_dir)
+           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 3,time, x, image_dir)
            write_set_to_file(individual_stars.savepoint(time),ssf_dir+"single_stars.hdf5","hdf5")
            write_set_to_file(singles_in_binaries.savepoint(time), bsf_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),bsf_dir+"binary_stars.hdf5","hdf5")
@@ -759,7 +736,7 @@ def main(
 
         print "t, Energy=", time, multiples_code.get_total_energy()
 
-
+    simple_2d_movie_maker("output_movie_evolution", img_dir=data_dir)
 
 
 def new_option_parser():

@@ -9,8 +9,9 @@ from amuse.datamodel import units
 from amuse.units import nbody_system
 import random
 import os
-
-
+from matplotlib import pyplot as plt
+from amuse.datamodel.particles import Particles
+from matplotlib import cm
 
 
 
@@ -59,6 +60,32 @@ def MakeMeANewCluster(N=100, HalfMassRadius=1.|units.parsec, mdist='K',
     bodies.mass = mZAMS
     return bodies, converter
 
+
+def binary_reference_frame(binary_systems, bsingles):
+    contact_status = []
+    for bi in binary_systems:
+        child_1 = bi.child1
+        child_2 = bi.child2
+
+        child1 = child_1.as_particle_in_set(bsingles)
+        child2 = child_2.as_particle_in_set(bsingles)
+        sep = (child1.position - child2.position).length()
+        rtot = (child1.radius+child2.radius)
+
+        if rtot > sep and sep != 0.0|units.m:
+            contact_status.append(["RLOF","RLOF"])
+        if sep==0.0|units.m:
+            contact_status.append(["MERGED","MERGED"])
+        if rtot < sep:
+            contact_status.append(["DETACHED","DETACHED"])
+
+        child_1.as_particle_in_set(bsingles).position += bi.position
+        child_2.as_particle_in_set(bsingles).position += bi.position
+
+        child_1.as_particle_in_set(bsingles).velocity += bi.velocity
+        child_2.as_particle_in_set(bsingles).velocity += bi.velocity
+
+    return bsingles, np.ravel(contact_status)
 
 
 
@@ -201,9 +228,9 @@ def simple_2d_movie_maker(filename, img_dir, output_dir=None):
         OUTPUTTED IN THE SAME DIRECTORY AS THE STORED IMAGES 
     """
     print "making evolution movie"
-    previous_movie_check = os.path.isfile(sim_dir+movie_filename)
+    # previous_movie_check = os.path.isfile(sim_dir+movie_filename)
     # if previous_movie_check==True:
         # os.remove(sim_dir+movie_filename)
         # print "Removed Previous Simulation Movie" 
-    os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+image_dir+"*.png' "+sim_dir+movie_filename)
+    os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+img_dir+"*.png' "+img_dir+filename)
     print "finished evolution movie"
