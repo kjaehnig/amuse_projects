@@ -26,11 +26,14 @@ from amuse.datamodel.particles import ParticlesSuperset
 from amuse.datamodel.rotation import add_spin
 from amuse.ext.orbital_elements import new_binary_from_orbital_elements
 from amuse.ext.orbital_elements import orbital_elements_from_binary
-from amuse.community.fractalcluster.interface import new_fractal_cluster_model
 from collections import Counter
 from matplotlib import cm
 # plt.rcParams['axes.facecolor'] = 'grey'
 import random
+from support_functions import MakeMeANewCluster
+from support_functions import spatial_plot_module
+from support_functions import simple_2d_movie_maker
+
 
 data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
 #data_dir = "/home/jaehniko/data_files"
@@ -81,7 +84,6 @@ def print_diagnostics(grav, E0=None):
 def new_smalln(converter, smalln_pro):
     result = SmallN(converter, number_of_workers=smalln_pro)
     result.parameters.timestep_parameter = 0.001
-    result.parameters.cm_index = 2001
     return result
 
 def new_kepler(converter):
@@ -143,8 +145,11 @@ def make_secondaries(center_of_masses, Nbin):
     into massive and non massive stars. The massive stars 
     paired up with their next largest partner while the 
     non-massive stars are paired up from a random uniform
-    distribution, in accordance with the mass ratio distro
-    from KROUPA.
+    distribution. 
+
+    ORIGINAL CODE FROM kira.py in AMUSE/EXAMPLES/TEXTBOOK
+    CAN BE FOUND IN THE AMUSECODE GITHUB REPOSITORY AT
+    https://github.com/amusecode/amuse
     """
     resulting_binaries = Particles()
     singles_in_binaries = Particles()
@@ -272,93 +277,7 @@ def resolve_changed_binaries(stopping_condition, stellar, multiples_code, conver
         # print bs
 ###BOOKLISTSTOP##
 
-def spatial_plot_module(single_stars, bsingle_stars, binary_stars, time, x, direc):
-    image_dir = direc
-    index = str(x)
-    index = index.zfill(4)
-    ax = plt.figure(figsize=(8,8))
-    ax1 = ax.add_subplot(111) 
 
-    tmin,tmax = -3, 3
-
-    translated_bstars, contact_status = binary_reference_frame(binary_stars, bsingle_stars)
-
-    all_singles = Particles(particles=[single_stars, translated_bstars])
-    
-    total_COM = all_singles.center_of_mass()
-    hmr = all_singles.LagrangianRadii(cm=all_singles.center_of_mass(),mf=[0.50])[0]
-    centering_subset = all_singles[(all_singles.position - total_COM).lengths() <= hmr]
-    centering_com = centering_subset.center_of_mass() 
-
-
-    star_pos = single_stars.position - centering_com
-    star_vel = single_stars.velocity# - single_stars.center_of_mass_velocity()
-
-    bstar_pos = translated_bstars.position - centering_com
-    bstar_vel = translated_bstars.velocity# - translated_bstars.center_of_mass_velocity()
-
-    detached_mask = np.in1d(contact_status,"DETACHED")
-    rlof_mask = np.in1d(contact_status,"RLOF")
-    merge_mask = np.in1d(contact_status,"MERGED")
-
-    detached_stars = bstar_pos[detached_mask]
-    v = ((bstar_vel.x[detached_mask]**2. + \
-        bstar_vel.y[detached_mask]**2)**.5).value_in(units.kms)
-
-    bin_x = detached_stars.x.value_in(units.parsec)
-    bin_y = detached_stars.y.value_in(units.parsec)
-
-    scatter1 = ax1.scatter(bin_x, bin_y, marker='^', s=75, c=np.log10(v),
-                            label="N_det: "+str(detached_mask.sum()),
-                            alpha=0.75, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
-
-    rlof_stars = bstar_pos[rlof_mask]
-    v = ((bstar_vel.x[rlof_mask]**2. + \
-        bstar_vel.y[rlof_mask]**2)**.5).value_in(units.kms)
-
-    bin_x = rlof_stars.x.value_in(units.parsec)
-    bin_y = rlof_stars.y.value_in(units.parsec)
-    scatter2 = ax1.scatter(bin_x, bin_y, marker='s', s=75, c=np.log10(v),
-                            label="N_rlof: "+str(rlof_mask.sum()),
-                            alpha=0.75, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
-
-    merged_stars = bstar_pos[merge_mask]
-    v = ((bstar_vel.x[merge_mask]**2. + bstar_vel.y[merge_mask]**2)**.5).value_in(units.kms)
-
-    bin_x = merged_stars.x.value_in(units.parsec)
-    bin_y = merged_stars.y.value_in(units.parsec)
-
-    scatter3 = ax1.scatter(bin_x, bin_y, marker='+', s=75, c=np.log10(v),
-                            label="N_merg: "+str(merge_mask.sum()),
-                            alpha=0.75, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
-
-    v = ((star_vel.x**2. + star_vel.y**2.)**.5).value_in(units.kms)
-    star_x = star_pos.x.value_in(units.parsec)
-    star_y = star_pos.y.value_in(units.parsec)
-    scatter4 = ax1.scatter(star_y, -1*star_x, marker='o', s=75, c=np.log10(v),
-                            label="N_ms: "+str(len(single_stars)),
-                            cmap=cm.gnuplot, alpha=0.75, zorder=0, 
-                            vmin=tmin, vmax=tmax)
-
-    ax1.set_xlabel('X [Parsecs]')
-    ax1.set_ylabel('Y [Parsecs]')
-
-    ax1.set_title(str(np.round(time.value_in(units.Myr),3))+' Myr')
-
-    cluster_length = (15|units.parsec).value_in(units.parsec)
-    plt.legend(loc='upper right', frameon=False, scatterpoints=1, markerscale=0.5)
-    ax1.set_xlim(-15, 15)
-    ax1.set_ylim(-15, 15)
-    cb = plt.colorbar(scatter1, pad=0.005)
-    cb.set_label(r"$Log_{10}\ |V|_{xy}\ [kms]$")
-    plt.draw()
-
-    plt.savefig(image_dir+'bin_evo_pos_plot'+index+'.png',bbox_inches='tight', dpi=300)
-    plt.cla()
-    plt.close()
 
 def update_dynamical_binaries_from_stellar(stellar, multiples_code, converter):
     kep = new_kepler(converter)
@@ -526,6 +445,8 @@ def merge_two_stars(bodies, particles_in_encounter):
     print "Two stars (M=",particles_in_encounter.mass,") collided at d=", com_pos.length()
     bodies.remove_particles(particles_in_encounter)
 
+
+
 def resolve_collision(collision_detection, gravity, stellar, bodies):
     if collision_detection.is_set():
         E_coll = gravity.gravity_code.kinetic_energy + gravity.gravity_code.potential_energy
@@ -543,54 +464,14 @@ def resolve_collision(collision_detection, gravity, stellar, bodies):
             dE_coll = E_coll - (gravity.gravity_code.kinetic_energy + gravity.gravity_code.potential_energy)
         print "Energy error in the collision: dE =", dE_coll 
 
-def MakeMeANewCluster(N=100, HalfMassRadius=1., mdist='K',
-                    kind="P", frac_dim=None, 
-                    W=None, mmin=0.1, mmax=100., 
-                    SEED=None):
-    np.random.seed(SEED)
-    random.seed(SEED)
-    if mdist.lower()=="k":
-        mZAMS = new_kroupa_mass_distribution(N,
-                mass_max=mmax|units.MSun)
-    if mdist.lower()=="s":
-        mZAMS = new_salpeter_mass_distribution(N,
-                mass_min=mmin|units.MSun,
-                mass_max=mmax|units.MSun)
-    mtot = mZAMS.sum()
-    rvir = (16./(3.*np.pi))*(HalfMassRadius/1.3) 
-    converter = nbody_system.nbody_to_si(
-            mtot,
-            rvir
-            )
 
-    if kind.lower()=="p":
-        bodies = new_plummer_model(N, converter,
-                                   random=np.random.seed(SEED))
-        print "--------------"
-        print "Made Plummer Model"
-        print "--------------"
-    if kind.lower()=="f":
-        if frac_dim==None:
-            frac_dim=1.6
-        bodies = new_fractal_cluster_model(N, converter,
-                fractal_dimension=frac_dim, random_seed=SEED)
-        print "--------------"
-        print "Made Fractal Cluster with d=",frac_dim
-        print "--------------"
-    if kind.lower()=="k":
-        if W==None: W=6
-        bodies = new_king_model(N,W,converter)
-        print "--------------"
-        print "Made King Model with W0=",W
-        print "--------------"
 
-    bodies.mass = mZAMS
-    return bodies, converter
+
 
 
 
 def main(
-        N=10,
+        N=100,
         Binfrac=0.5,
         HMR=1.,
         VR=0.5,
@@ -648,10 +529,7 @@ def main(
     #    filename = "cluster"+filename_number
     print filename
     file_dir_check = os.path.isdir(data_dir+str(filename))
-    # if file_dir_check:
-    #     print "Removing Directory..."
-    #     os.system("rm -rf "+data_dir+filename)
-    #     print "Done."
+
 
     if file_dir_check == False:
         os.makedirs(data_dir+str(filename))
@@ -881,13 +759,8 @@ def main(
 
         print "t, Energy=", time, multiples_code.get_total_energy()
 
-# print "making evolution movie"
-# previous_movie_check = os.path.isfile(sim_dir+movie_filename)
-# if previous_movie_check==True:
-#     os.remove(sim_dir+movie_filename)
-#     print "Removed Previous Simulation Movie" 
-# os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+image_dir+"*.png' "+sim_dir+movie_filename)
-# print "finished evolution movie"
+
+
 
 def new_option_parser():
     from amuse.units.optparse import OptionParser
@@ -915,7 +788,7 @@ def new_option_parser():
 
 if __name__ == "__main__":
     opt, arguments  = new_option_parser().parse_args()
-    main(**o.__dict__)
+    main(**opt.__dict__)
     set_printing_strategy("custom", 
                       preferred_units = [units.MSun, units.parsec, units.Myr], 
                       precision = 4, prefix = "", 
@@ -927,23 +800,23 @@ if __name__ == "__main__":
     #     # This is only for random.sample, which apparently does not use numpy
     #     import random
     #     random.seed(options.seed)
-    main(opt.N, 
-        opt.Binfrac, 
-        opt.HMR, 
-        opt.Virialratio,
-        opt.Tend,
-        opt.Numsteps,
-        opt.Mdist,
-        opt.Sdist,
-        opt.Mmin,
-        opt.Mmax,
-        opt.Filename,
-        opt.Seed,
-        opt.Npro,
-        opt.Smalln_pro,
-        opt.NF,
-        opt.HBF,
-        opt.SF)
+    # main(opt.N, 
+    #     opt.Binfrac, 
+    #     opt.HMR, 
+    #     opt.Virialratio,
+    #     opt.Tend,
+    #     opt.Numsteps,
+    #     opt.Mdist,
+    #     opt.Sdist,
+    #     opt.Mmin,
+    #     opt.Mmax,
+    #     opt.Filename,
+    #     opt.Seed,
+    #     opt.Npro,
+    #     opt.Smalln_pro,
+    #     opt.NF,
+    #     opt.HBF,
+    #     opt.SF)
 
 
 
