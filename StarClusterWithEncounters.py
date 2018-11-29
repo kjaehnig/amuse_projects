@@ -511,11 +511,10 @@ def main(
         os.makedirs(data_dir+str(filename))
 
     sim_dir = data_dir+str(filename)+"/"
-    image_dir_check = os.path.isdir(sim_dir+'images')
+    
     print "Made image directory"
-
     image_dir = sim_dir+"images/"
-
+    os.makedirs(image_dir)
     logging.basicConfig(level=logging.ERROR)
 
     print N, Mmin, Mmax,HMR
@@ -523,13 +522,14 @@ def main(
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
 
-    code = ph4(converter, number_of_workers=nproc)
+    code = ph4(converter, mode = 'cpu', number_of_workers=nproc-1)
     code.initialize_code()
-    code.set_defaults()
-    code.parameters.epsilon_squared = 0.0|units.AU**2.
+    code.parameters.set_defaults()
+    code.parameters.epsilon_squared = 0.01|units.RSun**2.
     # code.parameters.dt_param = 0.0001
-    code.parameters.timestep_parameter = 0.0001
-    stop_cond = grav.stopping_conditions.collision_detection
+    # code.parameters.use_gpu = 1
+    code.parameters.timestep_parameter = 0.001
+    stop_cond = code.stopping_conditions.collision_detection
     stop_cond.enable()
 
     code1 = datetime.datetime.now()
@@ -539,6 +539,8 @@ def main(
     single_stars, binary_stars, singles_in_binaries \
         = make_secondaries(stars, Nbin)
 
+    single_stars.move_to_center()
+    binary_stars.move_to_center()
     single_stars.scale_to_standard(convert_nbody=converter,virial_ratio=VR/2.)
     binary_stars.scale_to_standard(convert_nbody=converter,virial_ratio=VR/2.)
 
@@ -718,7 +720,7 @@ def main(
 
         if epsilon_check:
            print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
-           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 3,time, x, image_dir)
+           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 1,time, x, image_dir)
            write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
            write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
@@ -729,7 +731,7 @@ def main(
 
         print "t, Energy=", time, multiples_code.get_total_energy()
 
-    simple_2d_movie_maker("output_movie_evolution", img_dir=sim_dir)
+    simple_2d_movie_maker("output_movie_evolution", img_dir=image_dir)
 
 
 def new_option_parser():
