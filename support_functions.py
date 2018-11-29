@@ -6,7 +6,7 @@ from amuse.ic.salpeter import new_salpeter_mass_distribution
 from amuse.community.fractalcluster.interface import new_fractal_cluster_model
 from amuse.ic.kingmodel import new_king_model
 from amuse.datamodel import units
-from amuse.units import nbody_system
+from amuse.units import nbody_system, constants
 import random
 import os
 from matplotlib import pyplot as plt
@@ -85,7 +85,7 @@ def new_binary_orbit(mass1, mass2, semi_major_axis,
     mu = constants.G * total_mass
     
     velocity_perihelion \
-        = numpy.sqrt( mu / semi_major_axis * ((1.0 + eccentricity)
+        = np.sqrt( mu / semi_major_axis * ((1.0 + eccentricity)
                                                /(1.0 - eccentricity)))
     radius_perihelion = semi_major_axis * (1.0 - eccentricity)
     print velocity_perihelion
@@ -112,10 +112,10 @@ def random_semimajor_axis_PPE(Mprim, Msec, P_min=10|units.day,
     rnd_max = (Pmax * mpf)**(1./3.3) / (1 + (Pmin * mpf)**(1./3.3))
     rnd_min = (Pmin * mpf)**(1./3.3) / (1 + (Pmax * mpf)**(1./3.3))
     rnd_max = min(rnd_max, 1)
-    rnd =numpy.random.uniform(rnd_min, rnd_max, 1)
+    rnd =np.random.uniform(rnd_min, rnd_max, 1)
     Porb = ((rnd/(1.-rnd))**3.3)/mpf | units.day
     Mtot = Mprim + Msec
-    a = ((constants.G*Mtot) * (Porb/(2*numpy.pi))**2)**(1./3.)
+    a = ((constants.G*Mtot) * (Porb/(2*np.pi))**2)**(1./3.)
     return a
 
 def make_secondaries(center_of_masses, Nbin):
@@ -158,11 +158,11 @@ def make_secondaries(center_of_masses, Nbin):
             print "Making Massive Binary..."
             print ms
         if mp < 5|units.MSun:
-            ms = numpy.random.uniform(mmin.value_in(units.MSun),
+            ms = np.random.uniform(mmin.value_in(units.MSun),
                                       mp.value_in(units.MSun)) | units.MSun
             print "Making non-Massive Binary..."
         a = random_semimajor_axis_PPE(mp, ms)
-        e = numpy.sqrt(numpy.random.random())
+        e = np.sqrt(np.random.random())
 
         nb = new_binary_orbit(mp, ms, a, e) 
         nb.position += bi.position
@@ -233,7 +233,8 @@ def MakeMeANewClusterWithBinaries(N=100, HalfMassRadius=1.|units.parsec, mdist='
 
     single_stars, binary_stars, singles_in_binaries \
         = make_secondaries(bodies, number_of_binaries)
-
+    # converter = nbody_system.nbody_to_si(single_stars.mass.sum()+singles_in_binaries.mass.sum(),
+                                        # rvir)
     return single_stars, binary_stars, singles_in_binaries, converter
 
 

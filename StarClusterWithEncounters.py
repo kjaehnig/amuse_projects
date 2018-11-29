@@ -81,9 +81,10 @@ def print_diagnostics(grav, E0=None):
 
     return E
 
+
 def new_smalln(converter, smalln_pro):
     result = SmallN(converter, number_of_workers=smalln_pro)
-    result.parameters.timestep_parameter = 0.001
+    result.parameters.timestep_parameter = 0.01
     return result
 
 def new_kepler(converter):
@@ -190,7 +191,7 @@ def make_secondaries(center_of_masses, Nbin):
         nb = singles_in_binaries.add_particles(nb)
         nb.radius = 0.01 * a 
 
-        bi.radius = 3*a 
+        bi.radius = a 
         binary_particle = bi.copy()
         binary_particle.child1 = nb[0]
         binary_particle.child2 = nb[1]
@@ -522,13 +523,13 @@ def main(
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
 
-    code = ph4(converter, mode = 'cpu', number_of_workers=nproc-1)
+    code = ph4(converter, mode = 'gpu')#, number_of_workers=nproc-1)
     code.initialize_code()
     code.parameters.set_defaults()
     code.parameters.epsilon_squared = 0.01|units.RSun**2.
     # code.parameters.dt_param = 0.0001
     # code.parameters.use_gpu = 1
-    code.parameters.timestep_parameter = 0.001
+    # code.parameters.timestep_parameter = 0.001
     stop_cond = code.stopping_conditions.collision_detection
     stop_cond.enable()
 
@@ -720,7 +721,7 @@ def main(
 
         if epsilon_check:
            print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
-           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 1,time, x, image_dir)
+           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 5,time, x, image_dir)
            write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
            write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
