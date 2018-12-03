@@ -170,7 +170,7 @@ def make_secondaries(center_of_masses, Nbin):
         nb = singles_in_binaries.add_particles(nb)
         nb.radius = 0.01 * a 
 
-        bi.radius = 3*a 
+        bi.radius = a * 3
         binary_particle = bi.copy()
         binary_particle.child1 = nb[0]
         binary_particle.child2 = nb[1]
@@ -233,8 +233,8 @@ def MakeMeANewClusterWithBinaries(N=100, HalfMassRadius=1.|units.parsec, mdist='
 
     single_stars, binary_stars, singles_in_binaries \
         = make_secondaries(bodies, number_of_binaries)
-    # converter = nbody_system.nbody_to_si(single_stars.mass.sum()+singles_in_binaries.mass.sum(),
-                                        # rvir)
+    converter = nbody_system.nbody_to_si(single_stars.mass.sum()+singles_in_binaries.mass.sum(),
+                                        rvir)
     return single_stars, binary_stars, singles_in_binaries, converter
 
 
@@ -267,11 +267,11 @@ def binary_reference_frame(binary_systems, bsingles):
 
 
 def spatial_plot_module(single_stars, 
-                        bsingle_stars, 
-                        binary_stars,
-                        cluster_length, 
-                        time, x, 
-                        direc):
+                        bsingle_stars=None, 
+                        binary_stars=None,
+                        cluster_length=None, 
+                        time=None, x=None, 
+                        direc=None):
     """
     FUNCTION THAT PLOTS THE 2-D X-Y DISTRIBUTION OF STARS WITHIN A 
     STAR CLUSTER, DIFFERENTIATING THE BINARIES FROM THE SINGLE STARS
@@ -302,71 +302,76 @@ def spatial_plot_module(single_stars,
     ax = plt.figure(figsize=(8,8))
     ax1 = ax.add_subplot(111) 
 
-    tmin,tmax = -3, 3
+    tmin,tmax = 0,3
 
-    translated_bstars, contact_status = binary_reference_frame(binary_stars, bsingle_stars)
+    if not binary_stars==None:
+        translated_bstars, contact_status = binary_reference_frame(binary_stars, bsingle_stars)
+        all_singles = Particles(particles=[single_stars, translated_bstars])
 
-    all_singles = Particles(particles=[single_stars, translated_bstars])
-    
+        detached_mask = np.in1d(contact_status,"DETACHED")
+        rlof_mask = np.in1d(contact_status,"RLOF")
+        merge_mask = np.in1d(contact_status,"MERGED")    
     # total_COM = all_singles.center_of_mass()
     # hmr = all_singles.LagrangianRadii(cm=all_singles.center_of_mass(),mf=[0.75])[0]
     # centering_subset = all_singles[(all_singles.position - total_COM).lengths() <= hmr]
     # centering_com = centering_subset.center_of_mass() 
+        # all_vel = all_singles.velocity
+        # vel_mean = all_vel.mean()
+        # vel_disp = all_vel.std()
 
+        bstar_pos = translated_bstars.position# - centering_com
+        bstar_vel = translated_bstars.velocity.lengths().value_in(units.kms)# - translated_bstars.center_of_mass_velocity()
+        # bstar_vel_sigma = abs(bstar_vel - vel_mean)#/vel_disp
 
-    all_vel = all_singles.velocity
-    vel_mean = all_vel.mean()
-    vel_disp = all_vel.std()
+        detached_stars = bstar_pos[detached_mask]
+        # v = ((bstar_vel.x[detached_mask]**2. + \
+            # bstar_vel.y[detached_mask]**2)**.5).value_in(units.kms)
+        v = bstar_vel[detached_mask]
+        bin_x = detached_stars.x.value_in(units.parsec)
+        bin_y = detached_stars.y.value_in(units.parsec)
+
+        scatter1 = ax1.scatter(bin_x, bin_y, marker='o', s=75, c=np.log10(v),
+                                label="N_det: "+str(detached_mask.sum()),
+                                alpha=0.50, zorder=1, cmap=cm.gnuplot,
+                                vmin=tmin, vmax=tmax) 
+
+        rlof_stars = bstar_pos[rlof_mask]
+        # v = ((bstar_vel.x[rlof_mask]**2. + \
+            # bstar_vel.y[rlof_mask]**2)**.5).value_in(units.kms)
+        v = bstar_vel[rlof_mask]
+        bin_x = rlof_stars.x.value_in(units.parsec)
+        bin_y = rlof_stars.y.value_in(units.parsec)
+        scatter2 = ax1.scatter(bin_x, bin_y, marker='s', s=75, c=np.log10(v),
+                                label="N_rlof: "+str(rlof_mask.sum()),
+                                alpha=0.50, zorder=1, cmap=cm.gnuplot,
+                                vmin=tmin, vmax=tmax) 
+
+        merged_stars = bstar_pos[merge_mask]
+        # v = ((bstar_vel.x[merge_mask]**2. + \
+            # bstar_vel.y[merge_mask]**2)**.5).value_in(units.kms)
+        v = bstar_vel[merge_mask]
+        bin_x = merged_stars.x.value_in(units.parsec)
+        bin_y = merged_stars.y.value_in(units.parsec)
+
+        scatter3 = ax1.scatter(bin_x, bin_y, marker='x', s=75, c=np.log10(v),
+                                label="N_merg: "+str(merge_mask.sum()),
+                                alpha=0.50, zorder=1, cmap=cm.gnuplot,
+                                vmin=tmin, vmax=tmax) 
+
+    if binary_stars==None:
+        all_vel = single_stars.velocity
+        vel_mean = all_vel.mean()
+        vel_disp = all_vel.std()
+
 
     star_pos = single_stars.position# - centering_com
-    star_vel = single_stars.velocity.lengths()# - single_stars.center_of_mass_velocity()
-    star_vel_sigma = (star_vel - vel_mean)/vel_disp
+    star_vel = single_stars.velocity.lengths().value_in(units.kms)# - single_stars.center_of_mass_velocity()
+    # star_vel_sigma = abs(star_vel - vel_mean)/vel_disp
 
-    bstar_pos = translated_bstars.position# - centering_com
-    bstar_vel = translated_bstars.velocity.lengths()# - translated_bstars.center_of_mass_velocity()
-    bstar_vel_sigma = (bstar_vel - vel_mean)/vel_disp
 
-    detached_mask = np.in1d(contact_status,"DETACHED")
-    rlof_mask = np.in1d(contact_status,"RLOF")
-    merge_mask = np.in1d(contact_status,"MERGED")
-
-    detached_stars = bstar_pos[detached_mask]
-    # v = ((bstar_vel.x[detached_mask]**2. + \
-        # bstar_vel.y[detached_mask]**2)**.5).value_in(units.kms)
-    v = bstar_vel_sigma[detached_mask]
-    bin_x = detached_stars.x.value_in(units.parsec)
-    bin_y = detached_stars.y.value_in(units.parsec)
-
-    scatter1 = ax1.scatter(bin_x, bin_y, marker='o', s=75, c=np.log10(v),
-                            label="N_det: "+str(detached_mask.sum()),
-                            alpha=0.50, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
-
-    rlof_stars = bstar_pos[rlof_mask]
-    # v = ((bstar_vel.x[rlof_mask]**2. + \
-        # bstar_vel.y[rlof_mask]**2)**.5).value_in(units.kms)
-    v = bstar_vel_sigma[rlof_mask]
-    bin_x = rlof_stars.x.value_in(units.parsec)
-    bin_y = rlof_stars.y.value_in(units.parsec)
-    scatter2 = ax1.scatter(bin_x, bin_y, marker='s', s=75, c=np.log10(v),
-                            label="N_rlof: "+str(rlof_mask.sum()),
-                            alpha=0.50, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
-
-    merged_stars = bstar_pos[merge_mask]
-    # v = ((bstar_vel.x[merge_mask]**2. + \
-        # bstar_vel.y[merge_mask]**2)**.5).value_in(units.kms)
-    v = bstar_vel_sigma[merge_mask]
-    bin_x = merged_stars.x.value_in(units.parsec)
-    bin_y = merged_stars.y.value_in(units.parsec)
-
-    scatter3 = ax1.scatter(bin_x, bin_y, marker='x', s=75, c=np.log10(v),
-                            label="N_merg: "+str(merge_mask.sum()),
-                            alpha=0.50, zorder=1, cmap=cm.gnuplot,
-                            vmin=tmin, vmax=tmax) 
 
     # v = ((star_vel.x**2. + star_vel.y**2.)**.5).value_in(units.kms)
-    v = star_vel_sigma
+    v = star_vel
     star_x = star_pos.x.value_in(units.parsec)
     star_y = star_pos.y.value_in(units.parsec)
     scatter4 = ax1.scatter(star_y, -1*star_x, marker='^', s=50, c=np.log10(v),
@@ -383,7 +388,7 @@ def spatial_plot_module(single_stars,
     plt.legend(loc='upper right', frameon=False, scatterpoints=1, markerscale=0.5)
     ax1.set_xlim(-cluster_length, cluster_length)
     ax1.set_ylim(-cluster_length, cluster_length)
-    cb = plt.colorbar(scatter1, pad=0.005)
+    cb = plt.colorbar(scatter4, pad=0.005)
     cb.set_label(r"$\sigma_{V,SC}$")
     plt.draw()
 

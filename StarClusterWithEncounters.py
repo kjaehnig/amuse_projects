@@ -33,10 +33,16 @@ import random
 from support_functions import MakeMeANewCluster
 from support_functions import spatial_plot_module
 from support_functions import simple_2d_movie_maker
+from amuse.support.console import set_printing_strategy
 
 data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
 # data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
 #data_dir = "/home/jaehniko/data_files"
+
+set_printing_strategy("custom", 
+                  preferred_units = [units.MSun, units.parsec, units.Myr], 
+                  precision = 4, prefix = "", 
+                  separator = " [", suffix = "]")
 
 def write_csv(data, filename):
     with open(filename+'.csv', 'a') as outfile:
@@ -63,6 +69,7 @@ def print_diagnostics(grav, E0=None):
     Nmul = len(grav.binaries)
     print ""
     # print "time= ", grav.gravity_code.get_time().in_(units.Myr)
+    print "    virial-ratio of cluster=   ", 2*KE/(abs(PE))
     print "    top-level kinetic energy = ", KE
     print "    top-level potential energy = ", PE
     print "    total top-level energy = ", KE+PE
@@ -84,7 +91,7 @@ def print_diagnostics(grav, E0=None):
 
 def new_smalln(converter, smalln_pro):
     result = SmallN(converter, number_of_workers=smalln_pro)
-    result.parameters.timestep_parameter = 0.01
+    result.parameters.timestep_parameter = 0.001
     return result
 
 def new_kepler(converter):
@@ -138,6 +145,36 @@ def random_semimajor_axis_PPE(Mprim, Msec, P_min=10|units.day,
     Mtot = Mprim + Msec
     a = ((constants.G*Mtot) * (Porb/(2*numpy.pi))**2)**(1./3.)
     return a
+
+# def make_secondaries(center_of_masses, Nbin):
+#     resulting_binaries = Particles()
+#     singles_in_binaries = Particles()
+#     binaries = center_of_masses.random_sample(Nbin)
+#     mmin = center_of_masses.mass.min()
+#     print mmin
+#     for bi in binaries:
+#         mp = bi.mass
+#         ms = numpy.random.uniform(mmin.value_in(units.MSun),
+#                                   mp.value_in(units.MSun)) | units.MSun
+#         a = random_semimajor_axis_PPE(mp, ms)
+#         e = numpy.sqrt(numpy.random.random())
+
+#         nb = new_binary_orbit(mp, ms, a, e) 
+#         nb.position += bi.position
+#         nb.velocity += bi.velocity
+#         nb = singles_in_binaries.add_particles(nb)
+#         nb.radius = 0.01 * a 
+
+#         bi.radius = 3*a 
+#         binary_particle = bi.copy()
+#         binary_particle.child1 = nb[0]
+#         binary_particle.child2 = nb[1]
+#         binary_particle.semi_major_axis = a
+#         binary_particle.eccentricity = e
+#         resulting_binaries.add_particle(binary_particle)
+
+#     single_stars = center_of_masses-binaries
+#     return single_stars, resulting_binaries, singles_in_binaries
 
 def make_secondaries(center_of_masses, Nbin):
     """
@@ -523,15 +560,18 @@ def main(
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
 
-    code = ph4(converter, mode = 'gpu')#, number_of_workers=nproc-1)
+    code = ph4(converter, mode = 'gpu',redirection='none')
     code.initialize_code()
     code.parameters.set_defaults()
-    code.parameters.epsilon_squared = 0.01|units.RSun**2.
+    code.parameters.dt_param = 0.001
+    code.parameters.use_gpu = 1
+    # code.parameters.force_sync = 1
+    code.parameters.epsilon_squared = 0.00|units.RSun**2.
     # code.parameters.dt_param = 0.0001
     # code.parameters.use_gpu = 1
     # code.parameters.timestep_parameter = 0.001
-    stop_cond = code.stopping_conditions.collision_detection
-    stop_cond.enable()
+    # stop_cond = code.stopping_conditions.collision_detection
+    # stop_cond.enable()
 
     code1 = datetime.datetime.now()
     code1_delta = (code1-start_time).total_seconds()
@@ -540,10 +580,14 @@ def main(
     single_stars, binary_stars, singles_in_binaries \
         = make_secondaries(stars, Nbin)
 
-    single_stars.move_to_center()
-    binary_stars.move_to_center()
-    single_stars.scale_to_standard(convert_nbody=converter,virial_ratio=VR/2.)
-    binary_stars.scale_to_standard(convert_nbody=converter,virial_ratio=VR/2.)
+    # single_stars.move_to_center()
+    # binary_stars.move_to_center()
+    single_stars.scale_to_standard(convert_nbody=converter,
+                                    virial_ratio=VR,
+                                    smoothing_length_squared=code.parameters.epsilon_squared)
+    binary_stars.scale_to_standard(convert_nbody=converter,
+                                    virial_ratio=VR,
+                                    smoothing_length_squared=code.parameters.epsilon_squared)
 
     stellar = SeBa()
     stellar.parameters.metallicity = 0.02
@@ -571,11 +615,15 @@ def main(
     )
 
 
-    multiples_code.particles.add_particles((stars-binary_stars).copy())
+    multiples_code.particles.add_particles((single_stars).copy())
     multiples_code.singles_in_binaries.add_particles(singles_in_binaries)
     multiples_code.binaries.add_particles(binary_stars)
     multiples_code.commit_particles()
 
+    multiples_code.neighbor_perturbation_limit = 0.05
+    multiples_code.global_debug = 3
+    multiples_code.neighbor_veto = True
+    multiples_code.final_scale_factor = 1.01
     #    multiples_code.global_debug = 3
     multiples_code.handle_encounter_code.parameters.neighbours_factor = NF
     multiples_code.handle_encounter_code.parameters.hard_binary_factor = HBF
@@ -732,6 +780,9 @@ def main(
 
         print "t, Energy=", time, multiples_code.get_total_energy()
 
+    sim_end = datetime.datetime.now()
+    comp_time = sim_end - sim_start
+    print "Total computation time", comp_time.total_seconds()
     simple_2d_movie_maker("output_movie_evolution", img_dir=image_dir)
 
 
@@ -762,10 +813,7 @@ def new_option_parser():
 if __name__ == "__main__":
     opt, arguments  = new_option_parser().parse_args()
     main(**opt.__dict__)
-    set_printing_strategy("custom", 
-                      preferred_units = [units.MSun, units.parsec, units.Myr], 
-                      precision = 4, prefix = "", 
-                      separator = " [", suffix = "]")
+
 
     # options, arguments  = new_option_parser().parse_args()
     # if options.seed >= 0:
