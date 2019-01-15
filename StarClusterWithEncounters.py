@@ -35,8 +35,8 @@ from support_functions import spatial_plot_module
 from support_functions import simple_2d_movie_maker
 from amuse.support.console import set_printing_strategy
 
-data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
-# data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
+# data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
+data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
 #data_dir = "/home/jaehniko/data_files"
 
 set_printing_strategy("custom", 
@@ -91,7 +91,7 @@ def print_diagnostics(grav, E0=None):
 
 def new_smalln(converter, smalln_pro):
     result = SmallN(converter, number_of_workers=smalln_pro)
-    result.parameters.timestep_parameter = 0.001
+    result.parameters.timestep_parameter = 0.0001
     return result
 
 def new_kepler(converter):
@@ -380,54 +380,66 @@ def runaway_detector(multiples_code):
     return number_runaways
 
     
-def resolve_binary_merger(stellar, multiples_code):
+def resolve_binary_dynamics(converter, stellar, multiples_code, 
+                        individual_stars, singles_in_binaries, binary_stars, 
+                        timestep, stopping_condition):
+
+    resolve_changed_binaries(stopping_condition, stellar, multiples_code, converter)
+
+    bsingles_to_remove = Particles()
+
     condition = stellar.binaries.semi_major_axis.value_in(units.parsec) == 0.0 
-    merger_binaries = stellar.binaries[condition]
+    merged_binaries = stellar.binaries.key[condition]
+    number_mergers = 0
+    for ii in range(len(multiples_code.binaries)):
 
-    for bi in merger_binaries:
-        bm = bi.as_particle_in_set(multiples_code.binaries)
-        comp1 = bm.child1.as_particle_in_set(multiples_code.all_singles)
-        comp2 = bm.child2.as_particle_in_set(multiples_code.all_singles)
+        bi = multiples_code.binaries[ii]
+        bis = stellar.binaries[ii]
 
-        print comp1
+        loc_in_multiples_parts = np.in1d(multiples_code.particles.key,bi.key)
+        loc_in_stellar_parts = np.in1d(stellar.particles.key,bis.key)
 
-        dyn_comp1 = multiples_code.all_singles[multiples_code.all_singles.key==comp1.key]
-        dyn_comp2 = multiples_code.all_singles[multiples_code.all_singles.key==comp2.key]
-        dyn_bin = multiples_code.binaries[multiples_code.binaries.key==bi.key]
+        mA,mB = bi.child1.mass, bi.child2.mass
+        total_mass = mA + mB
+        com = bi.position
+        comv = bi.velocity
+        if (bi.semi_major_axis == 0 |units.parsec):
+            number_mergers += 1
+            print "Binary Merger Occurance: "
+            print "Components:    ",bi.child1.key,"       ", bi.child2.key
+            print "Stellar Type: ",bis.child1.stellar_type, bis.child2.mass.in_(units.MSun)
+            print "              ",bis.child2.stellar_type, bis.child2.mass.in_(units.MSun)
 
-        bstar1 = stellar.particles[stellar.particles.key==comp1.key]
-        bstar2 = stellar.particles[stellar.particles.key==comp2.key]
+            bc = binary_stars[ii].as_particle_in_set(multiples_code.particles)
+            bc_in_stellar = binary_stars[ii].as_particle_in_set(stellar.particles)
+            if bc == None: bc = binary_stars[ii]
 
-        dynamical_set = Particles(particles=[comp1, comp2])
-        new_key = comp1.key+comp2.key
-        new_particle = Particle(new_key)
-        new_particle.mass = bm.mass
-        new_particle.age = 0.0 | units.Myr
-        new_particle.velocity = dynamical_set.center_of_mass_velocity()
-        new_particle.position = dynamical_set.center_of_mass()
+            merged = Particle()
+            merged.mass = 0.95 * total_mass
+            merged.position = com + (comv*timestep)
+            merged.velocity = comv
+            merged.stellar_type = 1 | units.stellar_type
 
-        print "Binary Merger Occurance: "
-        print "Components:    ",comp1.key,"       ", comp2.key
-        print "Stellar Type: ",bi.child1.stellar_type, bi.child1.mass.in_(units.MSun)
-        print "              ",bi.child2.stellar_type, bi.child2.mass.in_(units.MSun)
+            ### REMOVE FROM THE PARTICLE SETS #####
+            # singles_in_binaries.remove_particle(binary_stars[ii].child1)
+            # singles_in_binaries.remove_particle(binary_stars[ii].child1)
+            bsingles_to_remove.add_particle(binary_stars[ii].child1)
+            bsingles_to_remove.add_particle(binary_stars[ii].child2)
+            stellar.particles.remove_particle(stellar.particles[loc_in_stellar_parts])
+            multiples_code.particles.remove_particle(multiples_code.particles[loc_in_multiples_parts])
 
-        stellar.particles.remove_particle(comp1)
-        stellar.particles.remove_particle(comp2)
-        stellar.binaries.remove_particle(bi)
-        print "Removed Binary ", bi.key
+            #### REMOVE FROM THE BINARY SETS #####
+            stellar.binaries.remove_particle(bis)
+            multiples_code.binaries.remove_particle(bi)
+            binary_stars.remove_particle(binary_stars[ii])
 
-        multiples_code.singles_in_binaries.remove_particle(dyn_comp1)
-        multiples_code.singles_in_binaries.remove_particle(dyn_comp2)
+            ### ADD NEW PARTICLE
+            stellar.particles.add_particle(merged)
+            multiples_code.particles.add_particle(merged)
+            individual_stars.add_particle(merged)
 
-        multiples_code.binaries.remove_particle(dyn_bin)
-
-        stellar.particles.add_particle(new_particle)
-        multiples_code.particles.add_particle(new_particle)
-
-        print "New single star added ", new_particle.key,"\n"
-        print "Sanity Check: ",len(multiples_code.singles_in_binaries), len(multiples_code.singles), len(stellar.particles)
-
-
+    singles_in_binaries.remove_particles(bsingles_to_remove)
+    return number_mergers
 
 def check_for_merger(stellar, multiples_code):
     condition_value = False
@@ -501,7 +513,8 @@ def main(
         smalln_pro=1,
         NF=1.0,
         HBF=3.0,
-        SF=10.0
+        SF=10.0,
+        RUN_GPU=1
         ):
 
 # N=100
@@ -527,7 +540,15 @@ def main(
     start_time = datetime.datetime.now()
     timestamp = "-"+str(start_time.year)+'-'+str(start_time.month)+'-'+str(start_time.day)
     filename = filename+timestamp+"-"+str(start_time.microsecond)
-    write_csv(['step', 'time', 'energy_error', 'step_time'], data_dir+filename)
+    print filename
+    file_dir_check = os.path.isdir(data_dir+str(filename))
+
+    if file_dir_check == False:
+        os.makedirs(data_dir+str(filename))
+
+    sim_dir = data_dir+str(filename)+"/"
+
+    write_csv(['step', 'time', 'energy_error', 'step_time'], sim_dir+filename)
 
     sim_num,num_bin = binary_fraction_calc(N, Binfrac)
     tend, nsteps, N, Nbin = Tend, Numsteps, sim_num, num_bin
@@ -541,14 +562,7 @@ def main(
                             )
                         )
     #    filename = "cluster"+filename_number
-    print filename
-    file_dir_check = os.path.isdir(data_dir+str(filename))
 
-
-    if file_dir_check == False:
-        os.makedirs(data_dir+str(filename))
-
-    sim_dir = data_dir+str(filename)+"/"
     
     print "Made image directory"
     image_dir = sim_dir+"images/"
@@ -559,14 +573,25 @@ def main(
     stars, converter = MakeMeANewCluster(N=sim_num, HalfMassRadius=HMR, mdist=Mdist,
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
+    if RUN_GPU:
+        code = ph4(converter, 
+                    mode = 'gpu',
+                    redirection='none')
+        code.initialize_code()
+        code.parameters.set_defaults()
+        code.parameters.use_gpu = 1
+    if not RUN_GPU:
+        code = ph4(converter, 
+                    mode = 'cpu',
+                    redirection='none',
+                    number_of_workers=nproc)
+        code.initialize_code()
+        code.parameters.set_defaults()
 
-    code = ph4(converter, mode = 'gpu',redirection='none')
-    code.initialize_code()
-    code.parameters.set_defaults()
-    code.parameters.dt_param = 0.001
-    code.parameters.use_gpu = 1
+    
+    code.parameters.dt_param = 0.0001
     # code.parameters.force_sync = 1
-    code.parameters.epsilon_squared = 0.00|units.RSun**2.
+    code.parameters.epsilon_squared = 0.1|units.m**2.
     # code.parameters.dt_param = 0.0001
     # code.parameters.use_gpu = 1
     # code.parameters.timestep_parameter = 0.001
@@ -575,7 +600,7 @@ def main(
 
     code1 = datetime.datetime.now()
     code1_delta = (code1-start_time).total_seconds()
-    write_csv([-2,code1_delta, 999, 999],data_dir+filename)
+    write_csv([-2,code1_delta, 999, 999],sim_dir+filename)
 
     single_stars, binary_stars, singles_in_binaries \
         = make_secondaries(stars, Nbin)
@@ -583,10 +608,10 @@ def main(
     # single_stars.move_to_center()
     # binary_stars.move_to_center()
     single_stars.scale_to_standard(convert_nbody=converter,
-                                    virial_ratio=VR,
+                                    virial_ratio=VR/2.,
                                     smoothing_length_squared=code.parameters.epsilon_squared)
     binary_stars.scale_to_standard(convert_nbody=converter,
-                                    virial_ratio=VR,
+                                    virial_ratio=VR/2.,
                                     smoothing_length_squared=code.parameters.epsilon_squared)
 
     stellar = SeBa()
@@ -597,7 +622,7 @@ def main(
 
     code2 = datetime.datetime.now()
     code2_delta = (code2-code1).total_seconds()
-    write_csv([-1,code2_delta, 999, 999],data_dir+filename)
+    write_csv([-1,code2_delta, 999, 999],sim_dir)
 
     supernova_detection = stellar.stopping_conditions.supernova_detection
     supernova_detection.enable()
@@ -705,13 +730,12 @@ def main(
 
     sim_start = datetime.datetime.now()
     sim_start_delta = (code2 - sim_start).total_seconds()
-    write_csv([0, sim_start_delta, 0.0, 0.0], data_dir+filename)
-
+    write_csv([0, sim_start_delta, 0.0, 0.0], sim_dir+filename)
     ii=1
     while time < tend:
         loop_time1 = datetime.datetime.now()
         index = str(x)
-        index = index.zfill(4)
+        index = index.zfill(6)
 
         se_timestep = stellar.particles.time_step.min()
         dt_min = min(sim_dt|units.Myr, se_timestep)
@@ -726,12 +750,8 @@ def main(
         ER = print_diagnostics(multiples_code, E0)
 
         RelErr = (ER - E0) / E0
-        channel_DYN_to_stars.copy()
-        channel_DYN_to_bstars.copy()
-        channel_DYN_to_bins.copy()
 
-        print "at t=", multiples_code.model_time, \
-              "Nmultiples:", len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)!=0.0|units.m])
+
 
         print "Checking for any binary changes..."
         if stopping_condition.is_set():
@@ -741,18 +761,31 @@ def main(
         print "Evolving the stellar equations..."
         stellar.evolve_model(time)
         print "Done evolving stellar equations."
-        small_timestep=resolve_supernova(supernova_detection, multiples_code, time)
 
-        stellar_separations = stellar.binaries.semi_major_axis.value_in(units.RSun)
+        # small_timestep=resolve_supernova(supernova_detection, multiples_code, time)
 
+        stellar_mergers = len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)==0.0|units.m])
+
+        # number_mergers = resolve_binary_dynamics(converter, stellar, multiples_code, 
+        #                     individual_stars, singles_in_binaries, binary_stars, 
+        #                     dt_min, stopping_condition)
+        print "at t=", multiples_code.model_time, \
+              "Nmultiples:", len(stellar.binaries) - stellar_mergers
         update_dynamical_binaries_from_stellar(stellar, multiples_code,
                                                converter)
 
+        # collision_detection = len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)==0.0|units.m])
+        # if collision_detection > 0:
+
+
         channel_SE_to_DYN.copy()
-        
+        channel_DYN_to_stars.copy()
+        channel_DYN_to_bstars.copy()
+        channel_DYN_to_bins.copy()
+
         loop_time2 = datetime.datetime.now()
         loop_delta = (loop_time2 - loop_time1).total_seconds()
-        write_csv([ii, loop_delta, RelErr, time.value_in(units.Myr)], data_dir+filename)
+        write_csv([ii, loop_delta, RelErr, time.value_in(units.Myr)], sim_dir+filename)
         ii+=1
         # if x==5: break
 
@@ -769,10 +802,11 @@ def main(
 
         if epsilon_check:
            print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
-           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 5,time, x, image_dir)
            write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
            write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
+           print(len(individual_stars),len(singles_in_binaries),len(binary_stars))
+           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 5,time, x, image_dir)
            snapshot_timesteps = np.delete(snapshot_timesteps, 0)
            print snapshot_timesteps
 
@@ -806,6 +840,7 @@ def new_option_parser():
     result.add_option("--NF", dest="NF", type="float", default=1.0)
     result.add_option("--HBF", dest="HBF", type="float", default=3.0)
     result.add_option("--SF", dest="SF",type="float", default=10.0)
+    result.add_option("--RUN_GPU",dest="RUN_GPU",type='int',default=0)
     return result
 
 

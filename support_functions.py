@@ -298,7 +298,7 @@ def spatial_plot_module(single_stars,
     """
     image_dir = direc
     index = str(x)
-    index = index.zfill(4)
+    index = index.zfill(6)
     ax = plt.figure(figsize=(8,8))
     ax1 = ax.add_subplot(111) 
 
@@ -374,7 +374,7 @@ def spatial_plot_module(single_stars,
     v = star_vel
     star_x = star_pos.x.value_in(units.parsec)
     star_y = star_pos.y.value_in(units.parsec)
-    scatter4 = ax1.scatter(star_y, -1*star_x, marker='^', s=50, c=np.log10(v),
+    scatter4 = ax1.scatter(star_y, star_x, marker='^', s=50, c=np.log10(v),
                             label="N_ms: "+str(len(single_stars)),
                             cmap=cm.gnuplot, alpha=0.50, zorder=0, 
                             vmin=tmin, vmax=tmax)
@@ -397,7 +397,8 @@ def spatial_plot_module(single_stars,
     plt.close()
 
 
-def simple_2d_movie_maker(filename, img_dir, output_dir=None):
+def simple_2d_movie_maker(filename,fps=None,img_dir=None,output_dir=None):
+    import os
     """
     MAKES A MOVIE OUT OF 2-D PLOTS OF THE STAR CLUSTER EVOLUTION
     USING FFMPEG
@@ -409,10 +410,14 @@ def simple_2d_movie_maker(filename, img_dir, output_dir=None):
         MOVIE. SET TO NONE, IN WHICH CASE THE MOVIE IS 
         OUTPUTTED IN THE SAME DIRECTORY AS THE STORED IMAGES 
     """
+    CWD = os.getcwd()
+    if filename==None: filename = "spatial_evolution_movie.mp4"
+    if fps==None: fps=15
+    if img_dir==None: img_dir = CWD
     if not filename[-4:]=='.mp4': filename = filename+".mp4"
     if not output_dir==None: movie_dir = output_dir
     if output_dir==None: movie_dir = img_dir
     
     print "making evolution movie"
-    os.system("ffmpeg -framerate 30 -pix_fmt yuv420p -pattern_type glob -i '"+img_dir+"*.png' "+movie_dir+filename)
+    os.system("ffmpeg -framerate "+str(fps)+" -pix_fmt yuv420p -pattern_type glob -i '"+img_dir+"*.png' "+movie_dir+filename)
     print "finished evolution movie"
