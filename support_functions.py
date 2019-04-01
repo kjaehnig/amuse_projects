@@ -12,16 +12,18 @@ import os
 from matplotlib import pyplot as plt
 from amuse.datamodel.particles import Particles
 from matplotlib import cm
-
-
-
-
+from amuse.units.quantities import zero
+import numpy
+from amuse.ext.orbital_elements import *
+from MASC.binaries import orbital_period_to_semi_major_axis
+from MASC.binaries import *
+import random
 def MakeMeANewCluster(N=100, HalfMassRadius=1.|units.parsec, mdist='K',
                     kind="P", frac_dim=None, 
                     W=None, mmin=0.1, mmax=100., 
                     SEED=None):
-    np.random.seed(SEED)
-    random.seed(SEED)
+    # np.random.seed(SEED)
+    # random.seed(SEED)
     if mdist.lower()=="k":
         mZAMS = new_kroupa_mass_distribution(N,
                 mass_max=mmax|units.MSun)
@@ -118,7 +120,8 @@ def random_semimajor_axis_PPE(Mprim, Msec, P_min=10|units.day,
     a = ((constants.G*Mtot) * (Porb/(2*np.pi))**2)**(1./3.)
     return a
 
-def make_secondaries(center_of_masses, Nbin):
+
+def make_secondaries_with_massives(center_of_masses, Nbin):
     """
     UPDATE 11-01-2018
     This module now subdivides the random sample of stars
@@ -158,11 +161,13 @@ def make_secondaries(center_of_masses, Nbin):
             print "Making Massive Binary..."
             print ms
         if mp < 5|units.MSun:
-            ms = np.random.uniform(mmin.value_in(units.MSun),
+            ms = numpy.random.uniform(mmin.value_in(units.MSun),
                                       mp.value_in(units.MSun)) | units.MSun
             print "Making non-Massive Binary..."
+
+            
         a = random_semimajor_axis_PPE(mp, ms)
-        e = np.sqrt(np.random.random())
+        e = numpy.sqrt(numpy.random.random())
 
         nb = new_binary_orbit(mp, ms, a, e) 
         nb.position += bi.position
@@ -170,7 +175,7 @@ def make_secondaries(center_of_masses, Nbin):
         nb = singles_in_binaries.add_particles(nb)
         nb.radius = 0.01 * a 
 
-        bi.radius = a * 3
+        bi.radius = a 
         binary_particle = bi.copy()
         binary_particle.child1 = nb[0]
         binary_particle.child2 = nb[1]
@@ -185,6 +190,108 @@ def make_secondaries(center_of_masses, Nbin):
     return single_stars, resulting_binaries, singles_in_binaries
 
 
+def make_secondaries_with_massives2(center_of_masses, Nbin):
+    """
+    UPDATE 11-01-2018
+    This module now subdivides the random sample of stars
+    into massive and non massive stars. The massive stars 
+    paired up with their next largest partner while the 
+    non-massive stars are paired up from a random uniform
+    distribution. 
+
+    ORIGINAL CODE FROM kira.py in AMUSE/EXAMPLES/TEXTBOOK
+    CAN BE FOUND IN THE AMUSECODE GITHUB REPOSITORY AT
+    https://github.com/amusecode/amuse
+    """
+    resulting_binaries = Particles()
+    singles_in_binaries = Particles()
+    binaries = center_of_masses.random_sample(Nbin)
+
+    massive_stars = binaries[binaries.mass >= 5|units.MSun]
+    massive_star_key = massive_stars.key[np.argsort(massive_stars.mass)][::-1]
+    n_massive_stars = len(massive_star_key)
+    massive_star_indices = np.arange(n_massive_stars)
+    mmin = center_of_masses.mass.min()
+    print mmin,center_of_masses.mass.max()
+    for bi in binaries:
+        mp = bi.mass
+        if mp >= 5|units.MSun:
+            location = massive_star_indices[np.in1d(massive_star_key,bi.key)]
+            print location
+            if location!=(n_massive_stars-1):
+                ms_key = massive_star_key[location+1]
+                ms = binaries.mass[binaries.key==ms_key]
+                print "Found a partner"
+            if location==(n_massive_stars-1):
+                ms_key = location
+                ms = binaries[binaries.key==massive_star_key[location]]
+                ms = ms.mass * 0.9
+                print "Made a partner"            
+            print "Making Massive Binary..."
+            print ms
+        if mp < 5|units.MSun:
+            ms = numpy.random.uniform(mmin.value_in(units.MSun),
+                                      mp.value_in(units.MSun)) | units.MSun
+            print "Making non-Massive Binary..."
+
+        mean_p = 5.
+        sigma_p = 2.3
+        porb = np.random.lognormal(size=1,
+                                    mean=mean_p,
+                                    sigma=sigma_p) | units.day
+        a = orbital_period_to_semi_major_axis(
+                            porb,
+                            mp,
+                            ms
+            )
+        #a = random_semimajor_axis_PPE(mp, ms)
+        e = numpy.sqrt(numpy.random.random())
+        inclination = np.pi*random.random()|units.rad
+        true_anomaly = 2.*np.pi*random.random()|units.rad
+        longitude_of_ascending_node = 2.*np.pi*random.random()|units.rad
+        argument_of_periapsis = 2.*np.pi*random.random()|units.rad
+
+        primary,secondary = generate_binaries(
+            mp,
+            ms,
+            a,
+            eccentricity=e,
+            inclination=inclination,
+            true_anomaly=true_anomaly,
+            longitude_of_the_ascending_node=longitude_of_ascending_node,
+            argument_of_periapsis=argument_of_periapsis,
+            G=constants.G
+            )
+        # print primary.position[0]
+        nb = Particles(2)
+        nb[0].mass = mp
+        nb[0].position = primary.position[0]
+        nb[0].velocity = primary.velocity[0]
+
+        nb[1].mass = ms
+        nb[1].position = secondary.position[0]
+        nb[1].velocity = secondary.velocity[0]
+        # nb = new_binary_orbit(mp, ms, a, e) 
+        nb.position += bi.position
+        nb.velocity += bi.velocity
+        nb[0].radius = nb[0].mass.value_in(units.MSun)**(3./7) | units.RSun
+        nb[1].radius = nb[1].mass.value_in(units.MSun)**(3./7) | units.RSun
+        nb = singles_in_binaries.add_particles(nb)
+
+        # bi.radius = (nb[0].position - nb[1].position).length()
+        binary_particle = bi.copy()
+        binary_particle.child1 = nb[0]
+        binary_particle.child2 = nb[1]
+        binary_particle.semi_major_axis = a
+        binary_particle.eccentricity = e
+        resulting_binaries.add_particle(binary_particle)
+
+    # resulting_binaries.add_particles(massive_binaries)
+    # singles_in_binaries.add_particles(singles_in_massive_binaries)
+
+    single_stars = center_of_masses-binaries
+    return single_stars, resulting_binaries, singles_in_binaries
+
 def MakeMeANewClusterWithBinaries(N=100, HalfMassRadius=1.|units.parsec, mdist='K',
                     kind="P", frac_dim=None, 
                     W=None, mmin=0.1, mmax=100., 
@@ -192,8 +299,8 @@ def MakeMeANewClusterWithBinaries(N=100, HalfMassRadius=1.|units.parsec, mdist='
 
     N, number_of_binaries = binary_fraction_calc(N,bin_frac)
 
-    np.random.seed(SEED)
-    random.seed(SEED)
+    # np.random.seed(SEED)
+    # random.seed(SEED)
     if mdist.lower()=="k":
         mZAMS = new_kroupa_mass_distribution(N,
                 mass_max=mmax|units.MSun)
@@ -238,7 +345,7 @@ def MakeMeANewClusterWithBinaries(N=100, HalfMassRadius=1.|units.parsec, mdist='
     return single_stars, binary_stars, singles_in_binaries, converter
 
 
-def binary_reference_frame(binary_systems, bsingles):
+def binary_reference_frame(binary_systems, bsingles, return_status=True):
     contact_status = []
     for bi in binary_systems:
         child_1 = bi.child1
@@ -262,8 +369,8 @@ def binary_reference_frame(binary_systems, bsingles):
         child_1.as_particle_in_set(bsingles).velocity += bi.velocity
         child_2.as_particle_in_set(bsingles).velocity += bi.velocity
 
-    return bsingles, np.ravel(contact_status)
-
+    if return_status:    return bsingles, np.ravel(contact_status)
+    if not return_status: return bsingles
 
 
 def spatial_plot_module(single_stars, 
@@ -304,13 +411,19 @@ def spatial_plot_module(single_stars,
 
     tmin,tmax = 0,3
 
+    # single_stars.move_to_center()
+
     if not binary_stars==None:
         translated_bstars, contact_status = binary_reference_frame(binary_stars, bsingle_stars)
         all_singles = Particles(particles=[single_stars, translated_bstars])
 
+        all_singles.move_to_center()
+
         detached_mask = np.in1d(contact_status,"DETACHED")
         rlof_mask = np.in1d(contact_status,"RLOF")
         merge_mask = np.in1d(contact_status,"MERGED")    
+
+        # translated_bstars.move_to_center()
     # total_COM = all_singles.center_of_mass()
     # hmr = all_singles.LagrangianRadii(cm=all_singles.center_of_mass(),mf=[0.75])[0]
     # centering_subset = all_singles[(all_singles.position - total_COM).lengths() <= hmr]
@@ -319,7 +432,7 @@ def spatial_plot_module(single_stars,
         # vel_mean = all_vel.mean()
         # vel_disp = all_vel.std()
 
-        bstar_pos = translated_bstars.position# - centering_com
+        bstar_pos = translated_bstars.position-all_singles.center_of_mass()
         bstar_vel = translated_bstars.velocity.lengths().value_in(units.kms)# - translated_bstars.center_of_mass_velocity()
         # bstar_vel_sigma = abs(bstar_vel - vel_mean)#/vel_disp
 
@@ -364,7 +477,7 @@ def spatial_plot_module(single_stars,
         vel_disp = all_vel.std()
 
 
-    star_pos = single_stars.position# - centering_com
+    star_pos = single_stars.position-all_singles.center_of_mass()
     star_vel = single_stars.velocity.lengths().value_in(units.kms)# - single_stars.center_of_mass_velocity()
     # star_vel_sigma = abs(star_vel - vel_mean)/vel_disp
 
@@ -390,6 +503,99 @@ def spatial_plot_module(single_stars,
     ax1.set_ylim(-cluster_length, cluster_length)
     cb = plt.colorbar(scatter4, pad=0.005)
     cb.set_label(r"$\sigma_{V,SC}$")
+    plt.draw()
+
+    plt.savefig(image_dir+'bin_evo_pos_plot'+index+'.png',bbox_inches='tight', dpi=300)
+    plt.cla()
+    plt.close()
+
+
+def spatial_plot_module2(single_stars, 
+                        bsingle_stars=None, 
+                        binary_stars=None,
+                        cluster_length=None, 
+                        time=None, x=None, 
+                        direc=None,
+                        com=zero,
+                        core=zero):
+    """
+    FUNCTION THAT PLOTS THE 2-D X-Y DISTRIBUTION OF STARS WITHIN A 
+    STAR CLUSTER, COLORED BY THEIR MASS, AND LISTING THE NUMBER OF
+    DETACHED, RLOF, AND MERGED BINARIES
+
+    STARS ARE SEPARATED INTO THREE DIFFERENT SUBSETS
+        -- STARS IN BINARIES
+        -- SINGLE STARS
+        -- MERGED STARS
+        -- BINARY STARS IN RLOF
+    THEY ARE COLORED BY HOW MUCH HIGHER THEIR OVERALL VELOCITY IS
+    COMPARED TO THE VELOCITY DISPERSION OF THE STAR CLUSTER
+
+    PARAMETERS:
+    -- SINGLE_STARS; PARTICLE SET OF SINGLE STARS NOT IN BINARIES
+    -- BSINGLE_STARS; PARTICLE SET OF INDIVIDUAL STARS THAT ARE IN
+        BINARIES
+    -- BINARY_STARS; PARTICLE SET OF BINARY STAR ORBITAL PARAMETERS
+    -- CLUSTER LENGTH; SIZE OF X-Y AXIS TO PLOT STAR CLUSTER
+    -- TIME; TIMESTAMP TO ADD TO EACH IMAGE
+    -- X; QUEUE STAMP TO ADD TO IMAGE FILENAME
+    -- DIREC; DIRECTORY TO OUTPUT INDIVIDUAL IMAGES TO
+    """
+    image_dir = direc
+    index = str(x)
+    index = index.zfill(6)
+    ax = plt.figure(figsize=(8,8))
+    ax1 = ax.add_subplot(111) 
+
+    tmin,tmax = -1,2
+
+    # single_stars.move_to_center()
+    contact_status = binary_reference_frame(binary_stars, bsingle_stars)[1]
+    detached_size = np.in1d(contact_status,"DETACHED").sum()
+    rlof_size = np.in1d(contact_status,"RLOF").sum()
+    merge_size = np.in1d(contact_status,"MERGED").sum()
+
+    num_single_stars = len(single_stars)# - len(binary_stars)#(detached_size+rlof_size+merge_size)
+
+    if np.all(com==zero): 
+        single_stars.move_to_center()
+        star_pos = single_stars.position
+        cx = single_stars.center_of_mass()[0].value_in(units.parsec)
+        cy = single_stars.center_of_mass()[1].value_in(units.parsec)
+    if not np.all(com==zero):
+        center_of_mass = com
+        star_pos = single_stars.position - center_of_mass
+        cx = center_of_mass[0].value_in(units.parsec)
+        cy = center_of_mass[1].value_in(units.parsec)
+    # star_vel = single_stars.velocity.lengths().value_in(units.kms)# - single_stars.center_of_mass_velocity()
+    # star_vel_sigma = abs(star_vel - vel_mean)/vel_disp
+
+
+    # v = ((star_vel.x**2. + star_vel.y**2.)**.5).value_in(units.kms)
+    m = np.log10(single_stars.mass.value_in(units.MSun))
+    star_x = star_pos.x.value_in(units.parsec)
+    star_y = star_pos.y.value_in(units.parsec)
+    scatter4 = ax1.scatter(star_y, star_x, marker='o', s=50, c=m,
+                            label=r"$N_{ms}:\ $"+str(num_single_stars)+"\n"+\
+                            r"$Bin_{det}:\ $"+str(detached_size/2)+"\n"+\
+                            r"$Bin_{RLOF}:\ $"+str(rlof_size/2)+"\n"+\
+                            r"$Bin_{merged}:\ $"+str(merge_size/2),
+                            cmap=cm.viridis, alpha=0.50, zorder=0, 
+                            vmin=tmin, vmax=tmax)
+    if not core==zero:
+        c1 = plt.Circle((cx,cy),core.value_in(units.parsec),fill=False,color='black',zorder=1)
+        ax1.add_artist(c1)
+    ax1.set_xlabel('X [Parsecs]')
+    ax1.set_ylabel('Y [Parsecs]')
+
+    ax1.set_title(str(np.round(time.value_in(time.unit),3))+str(time.unit))
+
+    # cluster_length = (5|units.parsec).value_in(units.parsec)
+    plt.legend(loc='upper right', frameon=False, scatterpoints=1, markerscale=0.5)
+    ax1.set_xlim(-cluster_length, cluster_length)
+    ax1.set_ylim(-cluster_length, cluster_length)
+    cb = plt.colorbar(scatter4, pad=0.005)
+    cb.set_label(r"$Mass\ [M_{\odot}]$")
     plt.draw()
 
     plt.savefig(image_dir+'bin_evo_pos_plot'+index+'.png',bbox_inches='tight', dpi=300)

@@ -30,14 +30,19 @@ from collections import Counter
 from matplotlib import cm
 # plt.rcParams['axes.facecolor'] = 'grey'
 import random
+from support_functions import make_secondaries_with_massives2
 from support_functions import MakeMeANewCluster
-from support_functions import spatial_plot_module
+from support_functions import spatial_plot_module2
 from support_functions import simple_2d_movie_maker
 from amuse.support.console import set_printing_strategy
+from MASC.binaries import orbital_period_to_semi_major_axis
+from amuse.ext.orbital_elements import generate_binaries
+# from MASC.binaries import *
 
-# data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
-data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
-#data_dir = "/home/jaehniko/data_files"
+
+data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
+# data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
+# data_dir = "/home/jaehniko/data_files"
 
 set_printing_strategy("custom", 
                   preferred_units = [units.MSun, units.parsec, units.Myr], 
@@ -63,18 +68,18 @@ def binary_fraction_calc(total_num, bin_frac):
 
 def print_diagnostics(grav, E0=None):
 
-    KE = grav.gravity_code.kinetic_energy
-    PE = grav.gravity_code.potential_energy
-    Emul = grav.get_total_energy_of_all_multiples()
+    # KE = grav.gravity_code.kinetic_energy
+    # PE = grav.gravity_code.potential_energy
+    Emul = grav.get_total_energy()
     Nmul = len(grav.binaries)
     print ""
-    # print "time= ", grav.gravity_code.get_time().in_(units.Myr)
-    print "    virial-ratio of cluster=   ", 2*KE/(abs(PE))
-    print "    top-level kinetic energy = ", KE
-    print "    top-level potential energy = ", PE
-    print "    total top-level energy = ", KE+PE
+    print "time=    ", grav.gravity_code.get_time().in_(units.Myr)
+    # print "    virial-ratio of cluster=   ", 2*KE/(abs(PE))
+    # print "    top-level kinetic energy = ", KE
+    # print "    top-level potential energy = ", PE
+    # print "    total top-level energy = ", KE+PE
     print "    ",Nmul," multiples, ","total energy = ", Emul
-    E= KE + PE + Emul
+    E=Emul
     print "     UNCORRECTED TOTAL ENERGY =",E
 
     Etid = grav.multiples_external_tidal_correction \
@@ -91,7 +96,9 @@ def print_diagnostics(grav, E0=None):
 
 def new_smalln(converter, smalln_pro):
     result = SmallN(converter, number_of_workers=smalln_pro)
-    result.parameters.timestep_parameter = 0.0001
+    result.parameters.timestep_parameter = .14
+    result.parameters.cm_index = 10001
+    # result.parameters.allow_full_unperturbed = 0
     return result
 
 def new_kepler(converter):
@@ -113,7 +120,7 @@ def new_binary_orbit(mass1, mass2, semi_major_axis,
     mu = constants.G * total_mass
     
     velocity_perihelion \
-        = numpy.sqrt( mu / semi_major_axis * ((1.0 + eccentricity)
+        = np.sqrt( mu / semi_major_axis * ((1.0 + eccentricity)
                                                /(1.0 - eccentricity)))
     radius_perihelion = semi_major_axis * (1.0 - eccentricity)
     print velocity_perihelion
@@ -131,7 +138,7 @@ def new_binary_orbit(mass1, mass2, semi_major_axis,
     return binary
 
 # see Eggleton 2006 Equation 1.6.3 (2006epbm.book.....E)
-def random_semimajor_axis_PPE(Mprim, Msec, P_min=10|units.day,
+def random_semimajor_axis_PPE(Mprim, Msec, P_min=1.0|units.day,
                               P_max=100.|units.yr):
 
     Pmax = P_max.value_in(units.day)
@@ -146,37 +153,39 @@ def random_semimajor_axis_PPE(Mprim, Msec, P_min=10|units.day,
     a = ((constants.G*Mtot) * (Porb/(2*numpy.pi))**2)**(1./3.)
     return a
 
-# def make_secondaries(center_of_masses, Nbin):
-#     resulting_binaries = Particles()
-#     singles_in_binaries = Particles()
-#     binaries = center_of_masses.random_sample(Nbin)
-#     mmin = center_of_masses.mass.min()
-#     print mmin
-#     for bi in binaries:
-#         mp = bi.mass
-#         ms = numpy.random.uniform(mmin.value_in(units.MSun),
-#                                   mp.value_in(units.MSun)) | units.MSun
-#         a = random_semimajor_axis_PPE(mp, ms)
-#         e = numpy.sqrt(numpy.random.random())
-
-#         nb = new_binary_orbit(mp, ms, a, e) 
-#         nb.position += bi.position
-#         nb.velocity += bi.velocity
-#         nb = singles_in_binaries.add_particles(nb)
-#         nb.radius = 0.01 * a 
-
-#         bi.radius = 3*a 
-#         binary_particle = bi.copy()
-#         binary_particle.child1 = nb[0]
-#         binary_particle.child2 = nb[1]
-#         binary_particle.semi_major_axis = a
-#         binary_particle.eccentricity = e
-#         resulting_binaries.add_particle(binary_particle)
-
-#     single_stars = center_of_masses-binaries
-#     return single_stars, resulting_binaries, singles_in_binaries
-
 def make_secondaries(center_of_masses, Nbin):
+    resulting_binaries = Particles()
+    singles_in_binaries = Particles()
+    binaries = center_of_masses.random_sample(Nbin)
+    mmin = center_of_masses.mass.min()
+    print mmin
+    for bi in binaries:
+        mp = bi.mass
+        ms = numpy.random.uniform(mmin.value_in(units.MSun),
+                                  mp.value_in(units.MSun)) | units.MSun
+        a = random_semimajor_axis_PPE(mp, ms)
+        e = numpy.sqrt(numpy.random.random())
+
+        nb = new_binary_orbit(mp, ms, a, e) 
+        nb.position += bi.position
+        nb.velocity += bi.velocity
+        nb[0].radius = nb[0].mass.value_in(units.MSun)**(3./7) | units.RSun
+        nb[1].radius = nb[1].mass.value_in(units.MSun)**(3./7) | units.RSun
+        nb = singles_in_binaries.add_particles(nb)
+        # nb.radius = a 
+
+        bi.radius = (nb[0].position - nb[1].position).length()
+        binary_particle = bi.copy()
+        binary_particle.child1 = nb[0]
+        binary_particle.child2 = nb[1]
+        binary_particle.semi_major_axis = a
+        binary_particle.eccentricity = e
+        resulting_binaries.add_particle(binary_particle)
+
+    single_stars = center_of_masses-binaries
+    return single_stars, resulting_binaries, singles_in_binaries
+
+def make_secondaries_with_massives(center_of_masses, Nbin):
     """
     UPDATE 11-01-2018
     This module now subdivides the random sample of stars
@@ -219,16 +228,20 @@ def make_secondaries(center_of_masses, Nbin):
             ms = numpy.random.uniform(mmin.value_in(units.MSun),
                                       mp.value_in(units.MSun)) | units.MSun
             print "Making non-Massive Binary..."
+
+            
         a = random_semimajor_axis_PPE(mp, ms)
         e = numpy.sqrt(numpy.random.random())
 
         nb = new_binary_orbit(mp, ms, a, e) 
         nb.position += bi.position
         nb.velocity += bi.velocity
+        nb[0].radius = nb[0].mass.value_in(units.MSun)**(3./7) | units.RSun
+        nb[1].radius = nb[1].mass.value_in(units.MSun)**(3./7) | units.RSun
         nb = singles_in_binaries.add_particles(nb)
-        nb.radius = 0.01 * a 
+        # nb.radius = a 
 
-        bi.radius = a 
+        # binary_particle.radius = (nb[0].position - nb[1].position).length()
         binary_particle = bi.copy()
         binary_particle.child1 = nb[0]
         binary_particle.child2 = nb[1]
@@ -241,6 +254,7 @@ def make_secondaries(center_of_masses, Nbin):
 
     single_stars = center_of_masses-binaries
     return single_stars, resulting_binaries, singles_in_binaries
+
 
 
 # def make_massive_binaries(massive_stars):
@@ -472,6 +486,76 @@ def merge_two_stars(bodies, particles_in_encounter):
     bodies.remove_particles(particles_in_encounter)
 
 
+def particle_dataset_bookkeeping(stellar, 
+                                multiples_code,
+                                single_stars,
+                                singles_in_binaries,
+                                binary_stars):
+
+    zero_mass_stars = stellar.particles.mass == 0.0|units.MSun
+    if np.sum(zero_mass_stars) > 0:
+        print("There are non-existent stars that need to be removed...")
+
+        binary_removals = []
+        single_star_removals = []
+        single_star_additions = Particles()
+
+        for bi in stellar.binaries:
+            bs = bi.as_particle_in_set(multiples_code.binaries)
+            
+            children = Particles()
+            children.add_particle(bi.child1.as_particle_in_set(multiples_code.singles_in_binaries))
+            children.add_particle(bi.child2.as_particle_in_set(multiples_code.singles_in_binaries))
+
+            children.position += bs.position
+            children.velocity += bs.velocity
+            children.mass[0] = bi.child1.mass
+            children.mass[1] = bi.child2.mass
+
+            if np.sum(children.mass == 0|units.MSun) > 0:
+                print("----------------------------------------------")
+                print("Found the problematic binary stars...")
+                print("Making replacement particle...")
+                replacement_single = Particle()
+
+                problematic_binary_key = bi.key
+                binary_removals.append(problematic_binary_key)
+                single_star_removals.append(children.key)
+
+                zero_mass_star = children[children.mass == 0.0|units.MSun]
+                non_zero_mass_star = children[children.mass != 0.0|units.MSun]
+
+                replacement_single.mass = non_zero_mass_star.mass
+                replacement_single.position = [non_zero_mass_star.x,
+                                                non_zero_mass_star.y,
+                                                non_zero_mass_star.z]#bs.position
+                replacement_single.velocity = bs.velocity
+                replacement_single.age = 0|units.Myr
+                single_star_additions.add_particle(replacement_single)
+
+        print("Removing binaries from binary subsets...")
+        binary_stars.remove_particle(
+                binary_stars[np.in1d(multiples_code.binaries.key,binary_removals)]
+                                    )
+        multiples_code.binaries.remove_particle(
+                multiples_code.binaries[np.in1d(multiples_code.binaries.key,binary_removals)]
+                                                )
+        stellar.binaries.remove_particle(
+            stellar.binaries[np.in1d(stellar.binaries.key,binary_removals)]
+                                        )
+
+        print("Removing individual stars from singles subsets...")
+        singles_in_binaries.remove_particles(singles_in_binaries[np.in1d(singles_in_binaries.key,single_star_removals)])
+        multiples_code.singles_in_binaries.remove_particles(multiples_code.singles_in_binaries[np.in1d(multiples_code.singles_in_binaries.key, single_star_removals)])
+        multiples_code.all_singles.remove_particles(multiples_code.all_singles[np.in1d(multiples_code.all_singles.key, single_star_removals)])
+
+        stellar.particles.remove_particles(stellar.particles[np.in1d(stellar.particles.key,single_star_removals)])
+
+
+        print("Adding in replacement particles...")
+        single_stars.add_particle(single_star_additions)
+        multiples_code.particles.add_particle(single_star_additions)
+        stellar.particles.add_particle(single_star_additions)
 
 def resolve_collision(collision_detection, gravity, stellar, bodies):
     if collision_detection.is_set():
@@ -502,15 +586,18 @@ def main(
         HMR=1.,
         VR=0.5,
         Tend=10,
+        TimeUnit='myr',
         Numsteps=10,
         Mdist='K',
         Sdist='P',
         Mmin=1.0,
         Mmax=100.,
-        filename='cluster1',
+        filename='SC',
+        rot=False,
         seed=2501,
         nproc=1,
         smalln_pro=1,
+        DTPARAM=0.05,
         NF=1.0,
         HBF=3.0,
         SF=10.0,
@@ -536,10 +623,16 @@ def main(
 # SF=10.0
 
 
+    if TimeUnit.lower()=='myr': tend = Tend|units.Myr
+    if TimeUnit.lower()=='yr': tend = Tend|units.yr
 
     start_time = datetime.datetime.now()
     timestamp = "-"+str(start_time.year)+'-'+str(start_time.month)+'-'+str(start_time.day)
-    filename = filename+timestamp+"-"+str(start_time.microsecond)
+    if VR == 0.5: vflag = '-virial'
+    if VR > 0.5: vflag = '-super-virial'
+    if VR < 0.5: vflag = '-sub-virial'
+    seed_tag = str(seed)
+    filename = filename+vflag+timestamp+"-"+str(start_time.microsecond)+"-"+seed_tag
     print filename
     file_dir_check = os.path.isdir(data_dir+str(filename))
 
@@ -551,7 +644,7 @@ def main(
     write_csv(['step', 'time', 'energy_error', 'step_time'], sim_dir+filename)
 
     sim_num,num_bin = binary_fraction_calc(N, Binfrac)
-    tend, nsteps, N, Nbin = Tend, Numsteps, sim_num, num_bin
+    nsteps, N, Nbin = Numsteps, sim_num, num_bin
     # print seed
     random.seed(seed)
     np.random.seed(seed)
@@ -589,40 +682,45 @@ def main(
         code.parameters.set_defaults()
 
     
-    code.parameters.dt_param = 0.0001
+    # code.parameters.dt_param = 0.001
     # code.parameters.force_sync = 1
-    code.parameters.epsilon_squared = 0.1|units.m**2.
+    code.parameters.epsilon_squared = 0.1|units.RSun**2.
+    # code.parameters.block_steps = 1 
     # code.parameters.dt_param = 0.0001
     # code.parameters.use_gpu = 1
-    # code.parameters.timestep_parameter = 0.001
+    code.parameters.timestep_parameter = DTPARAM
     # stop_cond = code.stopping_conditions.collision_detection
     # stop_cond.enable()
 
     code1 = datetime.datetime.now()
     code1_delta = (code1-start_time).total_seconds()
-    write_csv([-2,code1_delta, 999, 999],sim_dir+filename)
+    # write_csv([-2,code1_delta, 999, 999],sim_dir+filename)
 
     single_stars, binary_stars, singles_in_binaries \
-        = make_secondaries(stars, Nbin)
+        = make_secondaries_with_massives2(stars, Nbin)
 
     # single_stars.move_to_center()
     # binary_stars.move_to_center()
-    single_stars.scale_to_standard(convert_nbody=converter,
-                                    virial_ratio=VR/2.,
-                                    smoothing_length_squared=code.parameters.epsilon_squared)
-    binary_stars.scale_to_standard(convert_nbody=converter,
-                                    virial_ratio=VR/2.,
-                                    smoothing_length_squared=code.parameters.epsilon_squared)
+
+    # single_stars.scale_to_standard(convert_nbody=converter,
+    #                                 virial_ratio=VR/2.,
+    #                                 smoothing_length_squared=code.parameters.epsilon_squared)
+    # binary_stars.scale_to_standard(convert_nbody=converter,
+    #                                 virial_ratio=VR/2.,
+    #                             smoothing_length_squared=code.parameters.epsilon_squared)
 
     stellar = SeBa()
+    stellar.initialize_code()
+    stellar.parameters.set_defaults()
     stellar.parameters.metallicity = 0.02
     stellar.particles.add_particles(single_stars)
     stellar.particles.add_particles(singles_in_binaries)
     stellar.binaries.add_particles(binary_stars)
+    stellar.commit_particles()
 
     code2 = datetime.datetime.now()
     code2_delta = (code2-code1).total_seconds()
-    write_csv([-1,code2_delta, 999, 999],sim_dir)
+    # write_csv([-1,code2_delta, 999, 999],sim_dir)
 
     supernova_detection = stellar.stopping_conditions.supernova_detection
     supernova_detection.enable()
@@ -640,25 +738,31 @@ def main(
     )
 
 
-    multiples_code.particles.add_particles((single_stars).copy())
+    multiples_code.particles.add_particles(single_stars)
     multiples_code.singles_in_binaries.add_particles(singles_in_binaries)
     multiples_code.binaries.add_particles(binary_stars)
     multiples_code.commit_particles()
 
-    multiples_code.neighbor_perturbation_limit = 0.05
-    multiples_code.global_debug = 3
-    multiples_code.neighbor_veto = True
-    multiples_code.final_scale_factor = 1.01
+    # if rot:
+    # OmegaVector = [0., 0., 1e-15]|units.s**-1
+    # add_spin(multiples_code.particles, OmegaVector)
+
+    # multiples_code.particles.scale_to_standard(convert_nbody=converter,
+    #                                 virial_ratio=VR,
+    #                             smoothing_length_squared=code.parameters.epsilon_squared)
+
+    # multiples_code.neighbor_perturbation_limit = 0.05
+    # multiples_code.global_debug = 3
+    # multiples_code.neighbor_veto = True
+    # multiples_code.final_scale_factor = 1.01
     #    multiples_code.global_debug = 3
     multiples_code.handle_encounter_code.parameters.neighbours_factor = NF
     multiples_code.handle_encounter_code.parameters.hard_binary_factor = HBF
     multiples_code.handle_encounter_code.parameters.scatter_factor = SF    
 
-    #OmegaVector = [0., 0., 1e-15]|units.s**-1
-    #add_spin(multiples_code.particles, OmegaVector)
 
 
-    multiples_code.evolve_model(0.0|units.Myr)
+    multiples_code.evolve_model(1.0|units.yr)
 
     individual_stars = multiples_code.singles.copy()
     binary_stars = multiples_code.binaries.copy()
@@ -682,8 +786,8 @@ def main(
 
     dyn_attributes = multiples_code.particles.get_attribute_names_defined_in_store()
     channel_DYN_to_stars = multiples_code.singles.new_channel_to(individual_stars,
-                       attributes=["x","y","z","vx","vy","vz"],
-                       target_names=["x","y","z","vx","vy","vz"])
+                       attributes=["mass","x","y","z","vx","vy","vz"],
+                       target_names=["mass","x","y","z","vx","vy","vz"])
     channel_DYN_to_stars.copy()
 
     channel_DYN_to_bins = multiples_code.particles.new_channel_to(binary_stars,
@@ -692,8 +796,8 @@ def main(
     channel_DYN_to_bins.copy()
 
     channel_DYN_to_bstars = multiples_code.singles_in_binaries.new_channel_to(singles_in_binaries,
-                       attributes=["x","y","z","vx","vy","vz"],
-                       target_names=["x","y","z","vx","vy","vz"])
+                       attributes=["mass","x","y","z","vx","vy","vz"],
+                       target_names=["mass","x","y","z","vx","vy","vz"])
     channel_DYN_to_bstars.copy()
 
 
@@ -711,18 +815,17 @@ def main(
     x=0
 
     # spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, time, x, image_dir)
-    # write_set_to_file(individual_stars.savepoint(time),ssf_dir+"single_stars.hdf5","hdf5")
-    # write_set_to_file(singles_in_binaries.savepoint(time), bsf_dir+"binary_singles.hdf5","hdf5")
-    # write_set_to_file(binary_stars.savepoint(time),bsf_dir+"binary_stars.hdf5","hdf5")
-
+    write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
+    write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
+    write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
     print tend, Numsteps
-    sim_dt = tend.value_in(units.Myr) / np.float(nsteps)
+    sim_dt = tend.value_in(tend.unit) / np.float(nsteps)
     print sim_dt
 
-    snapshot_timesteps = np.arange(sim_dt,tend.value_in(units.Myr)+sim_dt, sim_dt).astype("float")
+    snapshot_timesteps = np.arange(sim_dt,tend.value_in(tend.unit)+sim_dt, sim_dt).astype("float")
     print snapshot_timesteps
 
-    sim_dt = tend.value_in(units.Myr)/ np.float(nsteps*10.)
+    sim_dt = tend.value_in(tend.unit)/ np.float(nsteps*5.)
 
     print "--------------------------------------------"
     print "Starting the simulation now..."
@@ -738,31 +841,34 @@ def main(
         index = index.zfill(6)
 
         se_timestep = stellar.particles.time_step.min()
-        dt_min = min(sim_dt|units.Myr, se_timestep)
+        dt_min = min(sim_dt|tend.unit, se_timestep)
         print "Time steps:",sim_dt, se_timestep.in_(units.Myr) 
 
         time += dt_min
 
-        E0 = print_diagnostics(multiples_code)
-        print "Evolving Model..."
+        E0 = multiples_code.get_total_energy()
+        print "Total Energy of System:      ",E0 #print_diagnostics(multiples_code)
         multiples_code.evolve_model(time)
-        print "Done Evolving Model."
-        ER = print_diagnostics(multiples_code, E0)
+        ER1 = multiples_code.get_total_energy()
+        relerr1 = (ER1 - E0)/E0
+        print "Relative Dynamics Error:     ",relerr1
+        # time = multiples_code.model_time
 
-        RelErr = (ER - E0) / E0
-
-
-
-        print "Checking for any binary changes..."
         if stopping_condition.is_set():
             resolve_changed_binaries(stopping_condition, stellar, multiples_code, converter)
-        print "Done checking for changed binaries."
-        
-        print "Evolving the stellar equations..."
-        stellar.evolve_model(time)
-        print "Done evolving stellar equations."
 
-        # small_timestep=resolve_supernova(supernova_detection, multiples_code, time)
+        stellar.evolve_model(time)
+        ER2 = multiples_code.get_total_energy()
+        relerr2 = (ER2 - ER1)/ER1
+        print "Relative Stellar Evol Error: ",relerr2
+
+        resolve_supernova(supernova_detection, multiples_code, time)
+        
+        update_dynamical_binaries_from_stellar(stellar, multiples_code,
+                                               converter)
+        ER3 = multiples_code.get_total_energy()
+        relerr3 = (ER3 - ER2)/ER2
+        print "Book-keeping Error:          ",relerr3
 
         stellar_mergers = len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)==0.0|units.m])
 
@@ -771,21 +877,33 @@ def main(
         #                     dt_min, stopping_condition)
         print "at t=", multiples_code.model_time, \
               "Nmultiples:", len(stellar.binaries) - stellar_mergers
-        update_dynamical_binaries_from_stellar(stellar, multiples_code,
-                                               converter)
 
         # collision_detection = len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)==0.0|units.m])
         # if collision_detection > 0:
 
+        # # ER = print_diagnostics(multiples_code, E0)
+        particle_dataset_bookkeeping(stellar, multiples_code,
+                                    individual_stars,
+                                    singles_in_binaries,
+                                    binary_stars)
+
+        if len(stellar.particles) > 50:
+            DensCtr,CoreR,CoreDens = multiples_code.particles.densitycentre_coreradius_coredens(converter)
+            # DensCtr = multiples_code.particles.center_of_mass()
+            print("Core Radius [pc]:          ", CoreR.value_in(units.parsec))
+            print("Core Density [Msun/pc**3]: ", CoreDens.value_in(units.MSun/units.parsec**3))
+        else:
+            DensCtr = multiples_code.particles.center_of_mass()
+            CoreR   = 0|units.parsec
 
         channel_SE_to_DYN.copy()
         channel_DYN_to_stars.copy()
         channel_DYN_to_bstars.copy()
         channel_DYN_to_bins.copy()
 
-        loop_time2 = datetime.datetime.now()
-        loop_delta = (loop_time2 - loop_time1).total_seconds()
-        write_csv([ii, loop_delta, RelErr, time.value_in(units.Myr)], sim_dir+filename)
+        RelErr = relerr1+relerr2+relerr3 #(ER - E0) / E0
+        print "Total Simulation Error:     ",RelErr
+        print "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
         ii+=1
         # if x==5: break
 
@@ -793,31 +911,34 @@ def main(
         channel_SE_to_bins.copy()
 
         if len(snapshot_timesteps)==0: break
-        epsilon = abs(time.value_in(units.Myr)-snapshot_timesteps[0]) 
+        epsilon = abs(time.value_in(tend.unit)-snapshot_timesteps[0]) 
 
         x += 1
          
          
-        epsilon_check = epsilon < 0.25
+        epsilon_check = epsilon < 0.10
 
         if epsilon_check:
-           print "wrote out files at time: ", np.round(time.value_in(units.Myr),2), time.value_in(units.Myr)
+           print "wrote out files at time: ", np.round(time.value_in(tend.unit),2), time.value_in(tend.unit)
            write_set_to_file(individual_stars.savepoint(time),sim_dir+"single_stars.hdf5","hdf5")
            write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
            print(len(individual_stars),len(singles_in_binaries),len(binary_stars))
-           spatial_plot_module(individual_stars, singles_in_binaries, binary_stars, 5,time, x, image_dir)
+           spatial_plot_module2(individual_stars, singles_in_binaries, binary_stars, 10,time, x, image_dir,com=DensCtr,core=CoreR)
            snapshot_timesteps = np.delete(snapshot_timesteps, 0)
            print snapshot_timesteps
 
+        loop_time2 = datetime.datetime.now()
+        loop_delta = (loop_time2 - loop_time1).total_seconds()
+        write_csv([ii, loop_delta, RelErr, time.value_in(units.Myr)], sim_dir+filename)
 
-
+        print "Timestep Computation Time: ", loop_delta," seconds"
         print "t, Energy=", time, multiples_code.get_total_energy()
 
     sim_end = datetime.datetime.now()
     comp_time = sim_end - sim_start
     print "Total computation time", comp_time.total_seconds()
-    simple_2d_movie_maker("output_movie_evolution", img_dir=image_dir)
+    simple_2d_movie_maker("output_movie_evolution",fps=45, img_dir=image_dir)
 
 
 def new_option_parser():
@@ -827,16 +948,19 @@ def new_option_parser():
     result.add_option("--Binfrac", dest="Binfrac",type="float", default=0.5)
     result.add_option("--HMR", unit=units.parsec,dest="HMR",type="float", default=1|units.parsec)
     result.add_option("--Virialratio", dest="VR", type="float", default=0.5)
-    result.add_option("--Tend", unit=units.Myr,dest="Tend",type="float", default=10.|units.Myr)
+    result.add_option("--Tend",dest="Tend",type="float", default=10.)
+    result.add_option("--TimeUnit", dest="TimeUnit",default='myr')
     result.add_option("--Numsteps", dest="Numsteps",type="int", default=10)
     result.add_option("--Mdist", dest="Mdist", default="K")
     result.add_option("--Sdist", dest="Sdist", default="P")
     result.add_option("--Mmin", dest="Mmin", type="float", default=0.5)
     result.add_option("--Mmax", dest="Mmax", type="float", default=100.)
-    result.add_option("--Filename", dest="filename", default="cluster1")
+    result.add_option("--Filename", dest="filename", default="SC")
+    result.add_option("--Rotation", dest='rot', default=False)
     result.add_option("--Seed", dest="seed",type="int", default=2501)
     result.add_option("--Npro", dest="nproc",type="int", default=1)
     result.add_option("--Smalln_pro",dest="smalln_pro",type="int",default=1)
+    result.add_option("--DTPARAM",dest='DTPARAM',type='float',default=0.05)
     result.add_option("--NF", dest="NF", type="float", default=1.0)
     result.add_option("--HBF", dest="HBF", type="float", default=3.0)
     result.add_option("--SF", dest="SF",type="float", default=10.0)
