@@ -510,6 +510,91 @@ def spatial_plot_module(single_stars,
     plt.close()
 
 
+
+def simple_spatial_plot_module(single_stars, 
+                        bsingle_stars=None, 
+                        binary_stars=None,
+                        cluster_length=None, 
+                        time=None, x=None, 
+                        direc=None,
+                        com=zero,
+                        core=zero):
+    """
+    FUNCTION THAT PLOTS THE 2-D X-Y DISTRIBUTION OF STARS WITHIN A 
+    STAR CLUSTER, DIFFERENTIATING THE BINARIES FROM THE SINGLE STARS
+    AS WELL AS SHOWING CHANGES OCCURING WITHIN BINARIES SUCH AS 
+    RLOF AND BINARY MERGERS.
+
+    STARS ARE SEPARATED INTO THREE DIFFERENT SUBSETS
+        -- STARS IN BINARIES
+        -- SINGLE STARS
+        -- MERGED STARS
+        -- BINARY STARS IN RLOF
+    THEY ARE COLORED BY HOW MUCH HIGHER THEIR OVERALL VELOCITY IS
+    COMPARED TO THE VELOCITY DISPERSION OF THE STAR CLUSTER
+
+    PARAMETERS:
+    -- SINGLE_STARS; PARTICLE SET OF SINGLE STARS NOT IN BINARIES
+    -- BSINGLE_STARS; PARTICLE SET OF INDIVIDUAL STARS THAT ARE IN
+        BINARIES
+    -- BINARY_STARS; PARTICLE SET OF BINARY STAR ORBITAL PARAMETERS
+    -- CLUSTER LENGTH; SIZE OF X-Y AXIS TO PLOT STAR CLUSTER
+    -- TIME; TIMESTAMP TO ADD TO EACH IMAGE
+    -- X; QUEUE STAMP TO ADD TO IMAGE FILENAME
+    -- DIREC; DIRECTORY TO OUTPUT INDIVIDUAL IMAGES TO
+    """
+    image_dir = direc
+    index = str(x)
+    index = index.zfill(6)
+    ax = plt.figure(figsize=(8,8))
+    ax1 = ax.add_subplot(111) 
+
+    if np.all(com==zero): 
+        single_stars.move_to_center()
+        star_pos = single_stars.position
+        cx = single_stars.center_of_mass()[0].value_in(units.parsec)
+        cy = single_stars.center_of_mass()[1].value_in(units.parsec)
+    if not np.all(com==zero):
+        center_of_mass = com
+        star_pos = single_stars.position - center_of_mass
+        cx = center_of_mass[0].value_in(units.parsec)
+        cy = center_of_mass[1].value_in(units.parsec)
+
+    contact_status = binary_reference_frame(binary_stars, bsingle_stars)[1]
+    detached_size = np.in1d(contact_status,"DETACHED").sum()
+    rlof_size = np.in1d(contact_status,"RLOF").sum()
+    merge_size = np.in1d(contact_status,"MERGED").sum()
+    num_single_stars = len(single_stars)-len(bsingle_stars)
+
+    label_str=r"$N_{ms}:\ $"+str(num_single_stars)+"\n"+\
+                r"$Bin_{det}:\ $"+str(detached_size/2)+"\n"+\
+                r"$Bin_{RLOF}:\ $"+str(rlof_size/2)+"\n"+\
+                r"$Bin_{merged}:\ $"+str(merge_size/2)
+    
+
+    star_x = star_pos.x.value_in(units.parsec)
+    star_y = star_pos.y.value_in(units.parsec)
+    scatter4 = ax1.scatter(star_y, star_x, marker='o', s=5.0, c='gray',alpha=0.5,
+                            label=label_str)
+
+    ax1.set_xlabel('X [Parsecs]')
+    ax1.set_ylabel('Y [Parsecs]')
+
+    ax1.set_title(str(np.round(time.value_in(units.Myr),3))+' Myr')
+
+    # cluster_length = (5|units.parsec).value_in(units.parsec)
+    plt.legend(loc='upper right', frameon=False, scatterpoints=1, markerscale=0.5)
+    ax1.set_xlim(-cluster_length, cluster_length)
+    ax1.set_ylim(-cluster_length, cluster_length)
+    # cb = plt.colorbar(scatter4, pad=0.005)
+    # cb.set_label(r"$\sigma_{V,SC}$")
+    plt.draw()
+
+    plt.savefig(image_dir+'bin_evo_pos_plot'+index+'.png',bbox_inches='tight', dpi=300)
+    plt.cla()
+    plt.close()
+
+
 def spatial_plot_module2(single_stars, 
                         bsingle_stars=None, 
                         binary_stars=None,
