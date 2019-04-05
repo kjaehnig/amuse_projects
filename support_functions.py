@@ -510,6 +510,23 @@ def spatial_plot_module(single_stars,
     plt.close()
 
 
+def energy_conv_plot(FILENAME=None):
+    import pandas as pd
+    data = pd.read_csv(FILENAME, float_precision="high")
+    
+    absolute_EdE = abs(data.energy_error)
+    ax = plt.figure(figsize=(8,8))
+    ax1 = ax.add_subplot(111) 
+
+    ax1.plot(data.step_time,absolute_EdE)
+    ax1.set_yscale('log')
+    ax1.set_ylabel(r"$(E_{0}-E)/E_{0}$",fontsize=12)
+    ax1.set_xlabel(r"$N_{step}$",fontsize=12)
+
+    plt.draw()
+    plt.savefig("energy_conservation_plot.png",bbox_inches='tight', dpi=300)
+    plt.cla()
+    plt.close()
 
 def simple_spatial_plot_module(single_stars, 
                         bsingle_stars=None, 
