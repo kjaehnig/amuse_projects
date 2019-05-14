@@ -32,17 +32,16 @@ from matplotlib import cm
 import random
 from support_functions import make_secondaries_with_massives2
 from support_functions import MakeMeANewCluster
-from support_functions import spatial_plot_module2
+from support_functions import simple_spatial_plot_module
 from support_functions import simple_2d_movie_maker
+from support_functions import energy_conv_plot
 from amuse.support.console import set_printing_strategy
 from MASC.binaries import orbital_period_to_semi_major_axis
 from amuse.ext.orbital_elements import generate_binaries
 # from MASC.binaries import *
 
 
-data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
-# data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
-# data_dir = "/home/jaehniko/data_files"
+
 
 set_printing_strategy("custom", 
                   preferred_units = [units.MSun, units.parsec, units.Myr], 
@@ -94,12 +93,24 @@ def print_diagnostics(grav, E0=None):
     return E
 
 
-def new_smalln(converter, smalln_pro):
-    result = SmallN(converter, number_of_workers=smalln_pro)
-    result.parameters.timestep_parameter = .14
-    result.parameters.cm_index = 10001
-    # result.parameters.allow_full_unperturbed = 0
-    return result
+# def new_smalln(converter, smalln_pro):
+#     result = SmallN(converter, number_of_workers=smalln_pro)
+#     result.parameters.timestep_parameter = .0001
+#     result.parameters.cm_index = 10001
+#     # result.parameters.allow_full_unperturbed = 0
+#     return result
+
+SMALLN = None
+def init_smalln(converter,smalln_pro):
+    global SMALLN
+    SMALLN = SmallN(converter, number_of_workers=smalln_pro)
+    SMALLN.parameters.timestep_parameter = .05
+    SMALLN.parameters.cm_index = 10001
+
+
+def new_smalln():
+    SMALLN.reset()
+    return SMALLN
 
 def new_kepler(converter):
     kepler = Kepler(converter)
@@ -327,6 +338,8 @@ def resolve_changed_binaries(stopping_condition, stellar, multiples_code, conver
         bs.eccentricity = e
         print "Modified binary parameters", a, e
         # print bs
+    stellar.commit_particles()
+    multiples_code.commit_particles()
 ###BOOKLISTSTOP##
 
 
@@ -516,7 +529,15 @@ def particle_dataset_bookkeeping(stellar,
                 print("----------------------------------------------")
                 print("Found the problematic binary stars...")
                 print("Making replacement particle...")
-                replacement_single = Particle()
+                id_creation = datetime.datetime.now()
+                random_id = int(str(id_creation.year) +\
+                                str(id_creation.month) +\
+                                    str(id_creation.day) +\
+                                        str(id_creation.hour) +\
+                                            str(id_creation.minute) +\
+                                                str(id_creation.microsecond)) 
+                print(random_id)
+                replacement_single = Particle(keys=random_id)
 
                 problematic_binary_key = bi.key
                 binary_removals.append(problematic_binary_key)
@@ -556,6 +577,9 @@ def particle_dataset_bookkeeping(stellar,
         single_stars.add_particle(single_star_additions)
         multiples_code.particles.add_particle(single_star_additions)
         stellar.particles.add_particle(single_star_additions)
+
+        # multiples_code.commit_particles()
+        # stellar.commit_particles()
 
 def resolve_collision(collision_detection, gravity, stellar, bodies):
     if collision_detection.is_set():
@@ -601,7 +625,10 @@ def main(
         NF=1.0,
         HBF=3.0,
         SF=10.0,
-        RUN_GPU=1
+        RUN_GPU=1,
+        IMSIZE=5, 
+        DIR=None,
+        MACHINE='linux'
         ):
 
 # N=100
@@ -622,15 +649,27 @@ def main(
 # HBF=3.0
 # SF=10.0
 
+# data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
+    if MACHINE.lower() == 'mac':
+        data_dir = "/Users/karljaehnig/Desktop/GRAD/sc_gal_sim/data_files/"
+    if MACHINE.lower() == 'accre': 
+        data_dir = "/home/jaehniko/data_files"
+    if MACHINE.lower() == 'linux':
+        data_dir = "/home/l_reclusa/Desktop/GRAD/SC/simulation_data/"
+
+    # if DIR==None:
+        # data_dir = data_dir
+    if DIR!=None:
+        data_dir = data_dir+DIR+"/"
 
     if TimeUnit.lower()=='myr': tend = Tend|units.Myr
     if TimeUnit.lower()=='yr': tend = Tend|units.yr
 
     start_time = datetime.datetime.now()
     timestamp = "-"+str(start_time.year)+'-'+str(start_time.month)+'-'+str(start_time.day)
-    if VR == 0.5: vflag = '-virial'
-    if VR > 0.5: vflag = '-super-virial'
-    if VR < 0.5: vflag = '-sub-virial'
+    if VR == 0.5: vflag = '-V'
+    if VR > 0.5: vflag = '-SV'
+    if VR < 0.5: vflag = '-sV'
     seed_tag = str(seed)
     filename = filename+vflag+timestamp+"-"+str(start_time.microsecond)+"-"+seed_tag
     print filename
@@ -666,6 +705,9 @@ def main(
     stars, converter = MakeMeANewCluster(N=sim_num, HalfMassRadius=HMR, mdist=Mdist,
                         kind=Sdist, frac_dim=1.6, 
                         W=None, mmin=Mmin, mmax=Mmax, SEED=seed)
+    # converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(1|units.MSun,
+    #                                                                     1|units.parsec,
+    #                                                                     1|units.kms)
     if RUN_GPU:
         code = ph4(converter, 
                     mode = 'gpu',
@@ -673,6 +715,7 @@ def main(
         code.initialize_code()
         code.parameters.set_defaults()
         code.parameters.use_gpu = 1
+        code.parameters.timestep_parameter = DTPARAM
     if not RUN_GPU:
         code = ph4(converter, 
                     mode = 'cpu',
@@ -680,15 +723,19 @@ def main(
                     number_of_workers=nproc)
         code.initialize_code()
         code.parameters.set_defaults()
-
-    
+        code.parameters.timestep_parameter = DTPARAM
+    if RUN_GPU==2:
+        code = Hermite(converter,
+                        number_of_workers=nproc)
+        code.initialize_code()
+        code.parameters.set_defaults()
+        code.parameters.dt_param = DTPARAM
     # code.parameters.dt_param = 0.001
     # code.parameters.force_sync = 1
-    code.parameters.epsilon_squared = 0.1|units.RSun**2.
+    code.parameters.epsilon_squared = 1|units.RSun**2.
     # code.parameters.block_steps = 1 
     # code.parameters.dt_param = 0.0001
     # code.parameters.use_gpu = 1
-    code.parameters.timestep_parameter = DTPARAM
     # stop_cond = code.stopping_conditions.collision_detection
     # stop_cond.enable()
 
@@ -725,9 +772,10 @@ def main(
     supernova_detection = stellar.stopping_conditions.supernova_detection
     supernova_detection.enable()
 
+    init_smalln(converter,smalln_pro)
     encounter_code = encounters.HandleEncounter(
         kepler_code =  new_kepler(converter),
-        resolve_collision_code = new_smalln(converter, smalln_pro=smalln_pro),
+        resolve_collision_code = new_smalln(),
         interaction_over_code = None,
         G = constants.G
     )
@@ -744,12 +792,12 @@ def main(
     multiples_code.commit_particles()
 
     # if rot:
-    # OmegaVector = [0., 0., 1e-15]|units.s**-1
+    # OmegaVector = [0., 0., 1e-14]|units.s**-1
     # add_spin(multiples_code.particles, OmegaVector)
 
-    # multiples_code.particles.scale_to_standard(convert_nbody=converter,
-    #                                 virial_ratio=VR,
-    #                             smoothing_length_squared=code.parameters.epsilon_squared)
+    multiples_code.particles.scale_to_standard(convert_nbody=converter,
+                                    virial_ratio=VR,
+                                smoothing_length_squared=code.parameters.epsilon_squared)
 
     # multiples_code.neighbor_perturbation_limit = 0.05
     # multiples_code.global_debug = 3
@@ -825,7 +873,7 @@ def main(
     snapshot_timesteps = np.arange(sim_dt,tend.value_in(tend.unit)+sim_dt, sim_dt).astype("float")
     print snapshot_timesteps
 
-    sim_dt = tend.value_in(tend.unit)/ np.float(nsteps*5.)
+    sim_dt = tend.value_in(tend.unit)/ np.float(nsteps*2.)
 
     print "--------------------------------------------"
     print "Starting the simulation now..."
@@ -881,14 +929,14 @@ def main(
         # collision_detection = len(stellar.binaries[stellar.binaries.semi_major_axis.in_(units.m)==0.0|units.m])
         # if collision_detection > 0:
 
-        # # ER = print_diagnostics(multiples_code, E0)
+        # ER = print_diagnostics(multiples_code, E0)
         particle_dataset_bookkeeping(stellar, multiples_code,
                                     individual_stars,
                                     singles_in_binaries,
                                     binary_stars)
 
         if len(stellar.particles) > 50:
-            DensCtr,CoreR,CoreDens = multiples_code.particles.densitycentre_coreradius_coredens(converter)
+            DensCtr,CoreR,CoreDens = multiples_code.all_singles.densitycentre_coreradius_coredens(converter)
             # DensCtr = multiples_code.particles.center_of_mass()
             print("Core Radius [pc]:          ", CoreR.value_in(units.parsec))
             print("Core Density [Msun/pc**3]: ", CoreDens.value_in(units.MSun/units.parsec**3))
@@ -924,21 +972,21 @@ def main(
            write_set_to_file(singles_in_binaries.savepoint(time), sim_dir+"binary_singles.hdf5","hdf5")
            write_set_to_file(binary_stars.savepoint(time),sim_dir+"binary_stars.hdf5","hdf5")
            print(len(individual_stars),len(singles_in_binaries),len(binary_stars))
-           spatial_plot_module2(individual_stars, singles_in_binaries, binary_stars, 10,time, x, image_dir,com=DensCtr,core=CoreR)
+           simple_spatial_plot_module(multiples_code.all_singles, singles_in_binaries, binary_stars, IMSIZE,time, x, image_dir,com=DensCtr,core=CoreR)
            snapshot_timesteps = np.delete(snapshot_timesteps, 0)
            print snapshot_timesteps
 
         loop_time2 = datetime.datetime.now()
         loop_delta = (loop_time2 - loop_time1).total_seconds()
         write_csv([ii, loop_delta, RelErr, time.value_in(units.Myr)], sim_dir+filename)
-
+        energy_conv_plot(FILENAME=sim_dir+filename+'.csv',DIR=sim_dir)
         print "Timestep Computation Time: ", loop_delta," seconds"
         print "t, Energy=", time, multiples_code.get_total_energy()
 
     sim_end = datetime.datetime.now()
     comp_time = sim_end - sim_start
     print "Total computation time", comp_time.total_seconds()
-    simple_2d_movie_maker("output_movie_evolution",fps=45, img_dir=image_dir)
+    simple_2d_movie_maker("output_movie_evolution",fps=45, img_dir=image_dir, output_dir=sim_dir)
 
 
 def new_option_parser():
@@ -960,11 +1008,14 @@ def new_option_parser():
     result.add_option("--Seed", dest="seed",type="int", default=2501)
     result.add_option("--Npro", dest="nproc",type="int", default=1)
     result.add_option("--Smalln_pro",dest="smalln_pro",type="int",default=1)
-    result.add_option("--DTPARAM",dest='DTPARAM',type='float',default=0.05)
+    result.add_option("--Dtparam",dest='DTPARAM',type='float',default=0.05)
     result.add_option("--NF", dest="NF", type="float", default=1.0)
     result.add_option("--HBF", dest="HBF", type="float", default=3.0)
     result.add_option("--SF", dest="SF",type="float", default=10.0)
-    result.add_option("--RUN_GPU",dest="RUN_GPU",type='int',default=0)
+    result.add_option("--Run_gpu",dest="RUN_GPU",type='int',default=0)
+    result.add_option("--Imsize",dest='IMSIZE',type='float',default=5)
+    result.add_option("--Dir",dest="DIR",default=None)
+    result.add_option("--Machine",dest='MACHINE', default='linux')
     return result
 
 
